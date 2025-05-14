@@ -39,6 +39,9 @@ node_modules/
 /build/
 build/
 
+# key
+doc/serviceAccountKey.json
+
 # Symbolication related
 app.*.symbols
 
