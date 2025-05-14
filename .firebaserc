@@ -1,0 +1,13 @@
+{
+  "projects": {
+    "default": "affinity-9e25e"
+  },
+  "targets": {
+    "affinity-9e25e": {
+      "hosting": {
+        "prod": ["affinity-9e25e"],        
+        "dev" : ["affinity-9e25e-dev"]    
+      }
+    }
+  }
+}

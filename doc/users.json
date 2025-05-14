@@ -1,0 +1,26 @@
+{"users": [
+{
+  "localId": "HqbyzepkLwO4mZBw2nvQQFghuTj2",
+  "displayName": "Lorenzo Mattia Bonazzi",
+  "photoUrl": "https://graph.facebook.com/10080737185324105/picture",
+  "lastSignedInAt": "1746837000929",
+  "createdAt": "1746721760698",
+  "providerUserInfo": [
+    {
+      "providerId": "facebook.com",
+      "rawId": "10080737185324105",
+      "displayName": "Lorenzo Mattia Bonazzi",
+      "photoUrl": "https://graph.facebook.com/10080737185324105/picture"
+    }
+  ]
+},
+{
+  "localId": "wj9anhaw4cdj0fI1EHVCtqFat8Q2",
+  "email": "prova@prova.it",
+  "emailVerified": false,
+  "passwordHash": "pF3ZaQ1CfnbjdE6bWschuDSdwWFym6pqRFP8wb9RMozFIjjBXLs4FHIOf5CVEOnWmAo70YORbAsy+ULsRkLNlA==",
+  "salt": "ChoexekAP4Dggw==",
+  "lastSignedInAt": "1746664633443",
+  "createdAt": "1746534806187",
+  "providerUserInfo": []
+}]}
