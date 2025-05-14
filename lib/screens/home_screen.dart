@@ -8,9 +8,13 @@ import 'package:geolocator/geolocator.dart';
 import '../bloc/swipe_bloc.dart';
 import '../bloc/swipe_event.dart';
 import '../bloc/swipe_state.dart';
+
 import '../models/filter_model.dart';
+
 import '../widgets/swipe_card.dart';
 import '../widgets/filter_sheet.dart';
+import '../widgets/heart_progress_indicator.dart';
+
 import 'profile_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -26,6 +30,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loading = true;
   bool isEnd = false;
   Key _swiperKey = UniqueKey();
+  int _currentIndex = 0;                   // quante card ho già swippato
 
   @override
   void initState() {
@@ -105,68 +110,80 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
+@override
+Widget build(BuildContext context) {
+  if (_loading) {
+    return Scaffold(body: Center(child: HeartProgressIndicator(
+        size: 60.0,
+        color: Theme.of(context).colorScheme.primary,
+      )));
+  }
 
-    return BlocBuilder<SwipeBloc, SwipeState>(
-      builder: (context, state) {
-
-        if (state is SwipeLoadSuccess) {
-          final list = state.profiles;
-          if (list.isEmpty || isEnd) {
-            return Scaffold(
-              appBar: _buildAppBar(),
-              body: const Center(child: Text('Hai visualizzato tutti i profili.')),
-            );
-          }
-          return Scaffold(
-            appBar: _buildAppBar(),
-            body: CardSwiper(
-              key: _swiperKey,
-              controller: _controller,
-              cardsCount: list.length,
-              numberOfCardsDisplayed: list.length >= 2 ? 2 : list.length,
-              onSwipe: (prev, curr, dir) {
-                final uid = list[prev]['uid'] as String;
-                if (dir == CardSwiperDirection.left) {
-                  context.read<SwipeBloc>().add(SwipeNope(uid));
-                } else if (dir == CardSwiperDirection.right) {
-                  context.read<SwipeBloc>().add(SwipeLike(uid));
-                } else if (dir == CardSwiperDirection.top) {
-                  context.read<SwipeBloc>().add(SwipeSuperlike(uid));
-                }
-                return dir != CardSwiperDirection.bottom;
-              },
-              onEnd: () { if(mounted){
-                setState(() {
-                  isEnd = true;
-                });
-              }},
-              cardBuilder: (_, i, __, ___) => SwipeCard(
-                data: list[i],
-                onTap: () => _onCardTap(list[i]),
-                onLike: () => _controller.swipe(CardSwiperDirection.right),
-                onNope: () => _controller.swipe(CardSwiperDirection.left),
-                onSuperlike: () => _controller.swipe(CardSwiperDirection.top),
-              ),
-            ),
-          );
-        } else if (state is SwipeProcessing) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
-        } else if (state is SwipeFailure) {
-          return Scaffold(
-            appBar: _buildAppBar(),
-            body: Center(child: Text('Errore: ${state.error}')),
-          );
-        }
-        // stato iniziale o altri
-        return const Scaffold(body: SizedBox.shrink());
-      },
+  // se ho finito, non costruisco più il CardSwiper
+  if (isEnd) {
+    return Scaffold(
+      appBar: _buildAppBar(),
+      body: const Center(child: Text('Hai visualizzato tutti i profili.')),
     );
   }
+
+  return BlocBuilder<SwipeBloc, SwipeState>(
+    builder: (context, state) {
+      if (state is SwipeLoadSuccess) {
+        final list = state.profiles;
+        final remaining = list.length - _currentIndex;
+        final displayed = remaining >= 2 ? 2 : remaining;
+
+        return Scaffold(
+          appBar: _buildAppBar(),
+          body: CardSwiper(
+            key: _swiperKey,
+            controller: _controller,
+            cardsCount: list.length,
+            numberOfCardsDisplayed: displayed,
+            onSwipe: (prev, curr, dir) {
+              final uid = list[prev]['uid'] as String;
+              if (dir == CardSwiperDirection.left) {
+                context.read<SwipeBloc>().add(SwipeNope(uid));
+              } else if (dir == CardSwiperDirection.right) {
+                context.read<SwipeBloc>().add(SwipeLike(uid));
+              } else if (dir == CardSwiperDirection.top) {
+                context.read<SwipeBloc>().add(SwipeSuperlike(uid));
+              }
+              if (curr != null) {
+                setState(() => _currentIndex = curr);
+              }
+              return dir != CardSwiperDirection.bottom;
+            },
+            onEnd: () {
+              if (mounted) setState(() => isEnd = true);
+            },
+            cardBuilder: (_, i, __, ___) => SwipeCard(
+              data: list[i],
+              onTap: () => _onCardTap(list[i]),
+              onLike:    () => _controller.swipe(CardSwiperDirection.right),
+              onNope:    () => _controller.swipe(CardSwiperDirection.left),
+              onSuperlike: () => _controller.swipe(CardSwiperDirection.top),
+            ),
+          ),
+        );
+      } else if (state is SwipeProcessing) {
+        return Scaffold(body: Center(child: HeartProgressIndicator(
+        size: 60.0,
+        color: Theme.of(context).colorScheme.primary,
+      )));
+      } else if (state is SwipeFailure) {
+        return Scaffold(
+          appBar: _buildAppBar(),
+          body: Center(child: Text('Errore: ${state.error}')),
+        );
+      }
+
+      return const Scaffold(body: SizedBox.shrink());
+    },
+  );
+}
+
 
   AppBar _buildAppBar() => AppBar(
         title: const Text('Affinity'),
