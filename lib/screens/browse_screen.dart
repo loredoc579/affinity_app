@@ -1,3 +1,4 @@
+import 'package:affinity_app/widgets/heart_progress_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -15,7 +16,10 @@ class BrowseScreen extends StatelessWidget {
         stream: FirebaseFirestore.instance.collection('users').snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return Center(child: HeartProgressIndicator(
+              size: 60.0,
+              color: Theme.of(context).colorScheme.primary,
+            ));
           }
           if (snapshot.hasError) {
             return Center(child: Text('Errore: ${snapshot.error}'));
