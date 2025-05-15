@@ -11,9 +11,12 @@ import '../bloc/swipe_state.dart';
 
 import '../models/filter_model.dart';
 
+import '../utils/filter_manager.dart';
+
 import '../widgets/swipe_card.dart';
-import '../widgets/filter_sheet.dart';
 import '../widgets/heart_progress_indicator.dart';
+import '../widgets/home_app_bar.dart';
+import '../widgets/home_bottom_nav_bar.dart';
 
 import 'profile_detail_screen.dart';
 
@@ -30,7 +33,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loading = true;
   bool isEnd = false;
   Key _swiperKey = UniqueKey();
-  int _currentIndex = 0;                   // quante card ho già swippato
+  int _currentIndex = 0; // swiped cards count
+  int _selectedNavIndex = 0; // bottom navigation index
 
   @override
   void initState() {
@@ -42,14 +46,12 @@ class _HomeScreenState extends State<HomeScreen> {
     _user = FirebaseAuth.instance.currentUser!;
     _position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
 
-    // Carica tutti i profili tranne quello corrente
     final snap = await FirebaseFirestore.instance.collection('users').get();
     _allProfiles = snap.docs
-        .where((d) => d.id != _user.uid)
-        .map((d) => {...d.data(), 'uid': d.id})
-        .toList();
+      .where((d) => d.id != _user.uid)
+      .map((d) => {...d.data(), 'uid': d.id})
+      .toList();
 
-    // Inizializza filtri da Firestore in FilterModel
     final filterModel = context.read<FilterModel>();
     final doc = await FirebaseFirestore.instance.collection('users').doc(_user.uid).get();
     if (doc.exists) {
@@ -68,37 +70,26 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    // Dopo aver caricato dati e filtri, invia al Bloc
-    _dispatchLoad();
-
+    FilterManager.dispatchLoad(context, _allProfiles, _position!);
     setState(() => _loading = false);
   }
 
-  void _dispatchLoad() {
-    final filter = context.read<FilterModel>();
-    final filtered = _allProfiles.where((p) {
-      // Applica gli stessi criteri di _filtered
-      final age = p['age'] is num ? (p['age'] as num).toInt() : int.tryParse('${p['age']}') ?? 0;
-      if (age < filter.ageRange.start || age > filter.ageRange.end) return false;
-      final gender = p['gender']?.toString() ?? '';
-      if (filter.gender != 'all' && gender != filter.gender) return false;
-      final lat = (p['lastLat'] as num?)?.toDouble();
-      final lon = (p['lastLong'] as num?)?.toDouble();
-      if (lat == null || lon == null) return false;
-      final distKm = Geolocator.distanceBetween(
-            _position!.latitude,
-            _position!.longitude,
-            lat,
-            lon,
-          ) /
-          1000;
-      return distKm <= filter.maxDistance;
-    }).toList();
-
-    context.read<SwipeBloc>().add(LoadProfiles(filtered));
+  void _showFilters() {
+  FilterManager.showFilterSheet(
+      context: context,
+      allProfiles: _allProfiles,
+      position: _position!,
+      user: _user,
+      onResetSwiper: () {
+        setState(() {
+          isEnd = false;
+          _swiperKey = UniqueKey();
+        });
+      },
+    );
   }
 
-  // Gestione tap sul dettaglio profilo
+
   Future<void> _onCardTap(Map<String, dynamic> data) async {
     final liked = await Navigator.push<bool>(
       context,
@@ -110,129 +101,111 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-@override
-Widget build(BuildContext context) {
-  if (_loading) {
-    return Scaffold(body: Center(child: HeartProgressIndicator(
-        size: 60.0,
-        color: Theme.of(context).colorScheme.primary,
-      )));
+  void _onNavItemTapped(int index) {
+    setState(() {
+      _selectedNavIndex = index;
+    });
+    if (index == 0) {
+      Navigator.pushNamed(context, '/chats');
+    } else if (index == 1) {
+      Navigator.pushNamed(context, '/profile');
+    }
   }
 
-  // se ho finito, non costruisco più il CardSwiper
-  if (isEnd) {
-    return Scaffold(
-      appBar: _buildAppBar(),
-      body: const Center(child: Text('Hai visualizzato tutti i profili.')),
-    );
-  }
-
-  return BlocBuilder<SwipeBloc, SwipeState>(
-    builder: (context, state) {
-      if (state is SwipeLoadSuccess) {
-        final list = state.profiles;
-        final remaining = list.length - _currentIndex;
-        final displayed = remaining >= 2 ? 2 : remaining;
-
-        return Scaffold(
-          appBar: _buildAppBar(),
-          body: CardSwiper(
-            key: _swiperKey,
-            controller: _controller,
-            cardsCount: list.length,
-            numberOfCardsDisplayed: displayed,
-            onSwipe: (prev, curr, dir) {
-              final uid = list[prev]['uid'] as String;
-              if (dir == CardSwiperDirection.left) {
-                context.read<SwipeBloc>().add(SwipeNope(uid));
-              } else if (dir == CardSwiperDirection.right) {
-                context.read<SwipeBloc>().add(SwipeLike(uid));
-              } else if (dir == CardSwiperDirection.top) {
-                context.read<SwipeBloc>().add(SwipeSuperlike(uid));
-              }
-              if (curr != null) {
-                setState(() => _currentIndex = curr);
-              }
-              return dir != CardSwiperDirection.bottom;
-            },
-            onEnd: () {
-              if (mounted) setState(() => isEnd = true);
-            },
-            cardBuilder: (_, i, __, ___) => SwipeCard(
-              data: list[i],
-              onTap: () => _onCardTap(list[i]),
-              onLike:    () => _controller.swipe(CardSwiperDirection.right),
-              onNope:    () => _controller.swipe(CardSwiperDirection.left),
-              onSuperlike: () => _controller.swipe(CardSwiperDirection.top),
-            ),
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return Scaffold(
+        body: Center(
+          child: HeartProgressIndicator(
+            size: 60.0,
+            color: Theme.of(context).colorScheme.primary,
           ),
-        );
-      } else if (state is SwipeProcessing) {
-        return Scaffold(body: Center(child: HeartProgressIndicator(
-        size: 60.0,
-        color: Theme.of(context).colorScheme.primary,
-      )));
-      } else if (state is SwipeFailure) {
-        return Scaffold(
-          appBar: _buildAppBar(),
-          body: Center(child: Text('Errore: ${state.error}')),
-        );
-      }
-
-      return const Scaffold(body: SizedBox.shrink());
-    },
-  );
-}
-
-
-  AppBar _buildAppBar() => AppBar(
-        title: const Text('Affinity'),
-        actions: [
-          IconButton(icon: const Icon(Icons.filter_list), onPressed: _showFilters),
-          IconButton(icon: const Icon(Icons.person), onPressed: () => Navigator.pushNamed(context, '/profile')),
-        ],
+        ),
       );
+    }
 
-  void _showFilters() {
-    final filter = context.read<FilterModel>();
-    showModalBottomSheet(
-      context: context,
-      builder: (_) => FilterSheet(
-        ageRange: filter.ageRange,
-        maxDistance: filter.maxDistance,
-        genderFilter: filter.gender,
-        onAgeChanged: (r) {
-          filter.updateAge(r);
-          _dispatchLoad();
-        },
-        onDistanceChanged: (d) {
-          filter.updateDistance(d);
-          _dispatchLoad();
-        },
-        onGenderChanged: (g) {
-          filter.updateGender(g);
-          _dispatchLoad();
-        },
-        onApply: () async {
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(_user.uid)
-              .update({
-            'filterMinAge': filter.ageRange.start.toInt(),
-            'filterMaxAge': filter.ageRange.end.toInt(),
-            'filterMaxDistance': filter.maxDistance,
-            'filterGender': filter.gender,
-          });
+    if (isEnd) {
+      return Scaffold(
+        appBar: HomeAppBar(onFilterTap: _showFilters),
+        body: const Center(child: Text('Hai visualizzato tutti i profili.')),
+        bottomNavigationBar: HomeBottomNavBar(
+              currentIndex: _selectedNavIndex,
+              onTap: _onNavItemTapped,
+            ),
+      );
+    }
 
-          setState(() {
-            isEnd = false;
-            _swiperKey = UniqueKey();
-          });
+    return BlocBuilder<SwipeBloc, SwipeState>(
+      builder: (context, state) {
+        if (state is SwipeLoadSuccess) {
+          final list = state.profiles;
+          final remaining = list.length - _currentIndex;
+          final displayed = remaining >= 2 ? 2 : remaining;
 
-          _dispatchLoad();
-          Navigator.pop(context);
-        },
-      ),
+          return Scaffold(
+            appBar: HomeAppBar(onFilterTap: _showFilters),
+            body: CardSwiper(
+              key: _swiperKey,
+              controller: _controller,
+              cardsCount: list.length,
+              numberOfCardsDisplayed: displayed,
+              onSwipe: (prev, curr, dir) {
+                final uid = list[prev]['uid'] as String;
+                if (dir == CardSwiperDirection.left) {
+                  context.read<SwipeBloc>().add(SwipeNope(uid));
+                } else if (dir == CardSwiperDirection.right) {
+                  context.read<SwipeBloc>().add(SwipeLike(uid));
+                } else if (dir == CardSwiperDirection.top) {
+                  context.read<SwipeBloc>().add(SwipeSuperlike(uid));
+                }
+                if (curr != null) {
+                  setState(() => _currentIndex = curr);
+                }
+                return dir != CardSwiperDirection.bottom;
+              },
+              onEnd: () {
+                if (mounted) setState(() => isEnd = true);
+              },
+              cardBuilder: (_, i, __, ___) => SwipeCard(
+                data: list[i],
+                onTap: () => _onCardTap(list[i]),
+                onLike: () => _controller.swipe(CardSwiperDirection.right),
+                onNope: () => _controller.swipe(CardSwiperDirection.left),
+                onSuperlike: () => _controller.swipe(CardSwiperDirection.top),
+              ),
+            ),
+            bottomNavigationBar: HomeBottomNavBar(
+              currentIndex: _selectedNavIndex,
+              onTap: _onNavItemTapped,
+            ),
+          );
+        } else if (state is SwipeProcessing) {
+          return Scaffold(
+            body: Center(
+              child: HeartProgressIndicator(
+                size: 60.0,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            bottomNavigationBar: HomeBottomNavBar(
+              currentIndex: _selectedNavIndex,
+              onTap: _onNavItemTapped,
+            ),
+          );
+        } else if (state is SwipeFailure) {
+          return Scaffold(
+            appBar: HomeAppBar(onFilterTap: _showFilters),
+            body: Center(child: Text('Errore: ${state.error}')),
+            bottomNavigationBar: HomeBottomNavBar(
+              currentIndex: _selectedNavIndex,
+              onTap: _onNavItemTapped,
+            ),
+          );
+        }
+
+        return const Scaffold(body: SizedBox.shrink());
+      },
     );
   }
 }
