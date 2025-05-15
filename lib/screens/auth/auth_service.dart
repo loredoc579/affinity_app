@@ -10,91 +10,83 @@ import 'package:cloud_firestore/cloud_firestore.dart'; // <-- Firestore import
 import 'dart:html' as html;
 import 'dart:js_util' as js_util;
 
-
-
 /// Effettua il login via Facebook e restituisce l'utente Firebase autenticato.
-/// Salva inoltre nome, email e foto in Firestore alla raccolta `users`.
+/// Salva inoltre nome, email e foto in Firestore e, se non presenti,
+/// imposta la foto Facebook come principale tra le 9 immagini in Firestore.
 Future<User?> signInWithFacebook() async {
-  if (kIsWeb) {
-    final resp = await _jsFbLogin();
-    final status = js_util.getProperty(resp, 'status') as String;
-    if (status != 'connected') {
-      throw FirebaseAuthException(
-        code: 'ERROR_FACEBOOK_LOGIN_FAILED',
-        message: 'Stato Facebook non connesso: $status',
+  try {
+    final LoginResult result;
+    if (kIsWeb) {
+      final fbResponse = await _jsFbLogin();
+      // Estrai proprietà dal JS object
+      final status = js_util.getProperty(fbResponse, 'status') as String;
+      final authResp = js_util.getProperty(fbResponse, 'authResponse');
+      final accessTokenStr = js_util.getProperty(authResp, 'accessToken') as String;
+      final userIdStr = js_util.getProperty(authResp, 'userID') as String;
+      final expiration = DateTime.now().add(Duration(days: 60));
+      result = LoginResult(
+        status: status == 'connected' ? LoginStatus.success : LoginStatus.failed,
+        accessToken: AccessToken(
+          token: accessTokenStr,
+          userId: userIdStr,
+          expires: expiration,
+          lastRefresh: DateTime.now(),
+          applicationId: '',
+          grantedPermissions: [],
+          declinedPermissions: [],
+          isExpired: false,
+          dataAccessExpirationTime: expiration,
+        ),
       );
+    } else {
+      result = await FacebookAuth.instance.login();
     }
+    if (result.status == LoginStatus.success && result.accessToken != null) {
+      final OAuthCredential facebookAuthCredential =
+          FacebookAuthProvider.credential(result.accessToken!.token);
 
-    final authResponse = js_util.getProperty(resp, 'authResponse');
-    final token = js_util.getProperty(authResponse, 'accessToken') as String;
-    final cred = FacebookAuthProvider.credential(token);
-    final userCred = await FirebaseAuth.instance.signInWithCredential(cred);
+      final userCredential =
+          await FirebaseAuth.instance.signInWithCredential(facebookAuthCredential);
+      final user = userCredential.user;
 
-    // Ottieni dati profilo Facebook
-    final userData = await FacebookAuth.instance.getUserData(
-      fields: 'email,name,picture.width(512)',
-    );
-
-    print('fb user:');
-    print(userData);
-
-    final name = userData['name'] as String?;
-    final email = userData['email'] as String?;
-    final photoUrl = (userData['picture']?['data']?['url']) as String?;
-
-    // Salva o aggiorna il documento utente in Firestore
-    await FirebaseFirestore.instance.collection('users').doc(userCred.user!.uid).set(
-      {
-        if (name != null) 'name': name,
-        if (email != null) 'email': email,
-        if (photoUrl != null) 'photoUrl': photoUrl,
-        'lastLogin': FieldValue.serverTimestamp(),
-      },
-      SetOptions(merge: true),
-    );
-    print("▶️ Utente salvato in Firestore: ${userCred.user!.uid}");
-    return userCred.user;
-
-  } else {
-    final result = await FacebookAuth.instance.login(
-      permissions: ['email', 'public_profile'],
-    );
-    if (result.status != LoginStatus.success) {
-      if (result.status == LoginStatus.cancelled) {
-        throw FirebaseAuthException(
-          code: 'ERROR_ABORTED_BY_USER',
-          message: 'Login annullato dall’utente',
+      if (user != null) {
+        // Ottengo nome, email e foto da Facebook (alta risoluzione)
+        final userData = await FacebookAuth.instance.getUserData(
+          fields: "name,email,picture.width(800).height(800)",
         );
+        final name = userData['name'] as String?;
+        final email = userData['email'] as String?;
+        final photoUrl =
+            (userData['picture'] as Map)['data']['url'] as String?;
+
+        // Salvo su Firestore
+        final docRef =
+            FirebaseFirestore.instance.collection('users').doc(user.uid);
+        await docRef.set({
+          'name': name,
+          'email': email,
+          'photoUrl': photoUrl,
+        }, SetOptions(merge: true));
+
+        // Se non ci sono già foto tra le 9, imposto la FB photo come principale
+        final snapshot = await docRef.get();
+        final dataMap = snapshot.data() ?? {};
+        final existing = dataMap['photoUrls'] as List<dynamic>?;
+        final hasImages = existing != null &&
+            existing.any((e) => e != null && (e as String).isNotEmpty);
+        if (!hasImages) {
+          List<String?> nine = List<String?>.filled(9, null);
+          if (photoUrl != null && photoUrl.isNotEmpty) {
+            nine[0] = photoUrl;
+          }
+          await docRef.set({'photoUrls': nine}, SetOptions(merge: true));
+        }
       }
-      throw FirebaseAuthException(
-        code: 'ERROR_FACEBOOK_LOGIN_FAILED',
-        message: result.message,
-      );
+      return user;
     }
-    final cred = FacebookAuthProvider.credential(
-      result.accessToken!.token,
-    );
-    final userCred = await FirebaseAuth.instance.signInWithCredential(cred);
-
-    // Ottieni dati profilo
-    final userData = await FacebookAuth.instance.getUserData(
-      fields: 'email,name,picture.width(512)',
-    );
-    final name = userData['name'] as String?;
-    final email = userData['email'] as String?;
-    final photoUrl = (userData['picture']?['data']?['url']) as String?;
-
-    await FirebaseFirestore.instance.collection('users').doc(userCred.user!.uid).set(
-      {
-        if (name != null) 'name': name,
-        if (email != null) 'email': email,
-        if (photoUrl != null) 'photoUrl': photoUrl,
-        'lastLogin': FieldValue.serverTimestamp(),
-      },
-      SetOptions(merge: true),
-    );
-
-    return userCred.user;
+    return null;
+  } catch (e) {
+    rethrow;
   }
 }
 

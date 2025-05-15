@@ -40,14 +40,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
           .doc(user!.uid)
           .get();
       final data = doc.data();
+      // Recupero foto importata da Facebook se presente
+      final fbPhoto = data?['photoUrl'] as String?;
+      final urls = data?['photoUrls'] as List<dynamic>?;
       setState(() {
         nameController.text = data?['name'] ?? '';
         ageController.text = data?['age'] ?? '';
         hobbiesController.text = data?['hobbies'] ?? '';
         emailController.text = data?['email'] ?? user!.email ?? '';
-        final urls = data?['photoUrls'] as List<dynamic>?;
+        // Se ci sono già 9 URL salvati, li uso
         if (urls != null && urls.length >= 9) {
           photoUrls = urls.map((e) => e as String?).toList();
+        } else {
+          // Altrimenti inizializzo la lista e, se c'è la foto FB, la metto come principale
+          photoUrls = List<String?>.filled(9, null);
+          if (fbPhoto != null && fbPhoto.isNotEmpty) {
+            photoUrls[0] = fbPhoto;
+          }
         }
         isLoading = false;
       });
@@ -111,19 +120,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (photoUrls[index] == null || user == null) return;
     setState(() => isLoading = true);
     try {
-      // Delete from Firebase Storage
       final ref = FirebaseStorage.instance
           .ref()
           .child('users/${user!.uid}/photo_$index.jpg');
       await ref.delete();
-      // Remove local URL and update Firestore
       photoUrls[index] = null;
       await FirebaseFirestore.instance
           .collection('users')
           .doc(user!.uid)
           .set({'photoUrls': photoUrls}, SetOptions(merge: true));
     } catch (e) {
-      // Handle any errors
+      // gestisci errori
     } finally {
       setState(() => isLoading = false);
     }
@@ -153,7 +160,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  // Grid 3x3 di 9 foto upload con indicazione principale
                   GridView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
@@ -191,7 +197,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       : null,
                                 ),
                                 child: url == null
-                                    ? Center(
+                                    ? const Center(
                                         child: Icon(
                                           Icons.add_a_photo,
                                           size: 36,
@@ -202,7 +208,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                             ),
                           ),
-                          // Pulsante 'X' per cancellare
                           if (url != null)
                             Positioned(
                               top: 4,
@@ -223,7 +228,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 ),
                               ),
                             ),
-                          // Label 'Principale' per la foto main
                           if (isMain)
                             Positioned(
                               bottom: 4,
