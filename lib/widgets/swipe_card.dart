@@ -20,7 +20,7 @@ class SwipeCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Stack(fit: StackFit.expand, children: [
-        Image.network(data['photoUrl'], fit: BoxFit.cover),
+        Image.network(data['photoUrls'][0], fit: BoxFit.cover),
         Positioned(
           bottom: 120, left: 16, right: 16,
           child: Text(

@@ -1,3 +1,5 @@
 flutter clean
 flutter pub get
 flutter run -d web-server --web-hostname localhost --web-port 5678
+
+bucket: affinity-9e25e.firebasestorage.app
