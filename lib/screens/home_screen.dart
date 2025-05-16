@@ -13,6 +13,7 @@ import '../models/filter_model.dart';
 
 import '../utils/filter_manager.dart';
 
+import '../widgets/ripple_avatar.dart';
 import '../widgets/swipe_card.dart';
 import '../widgets/heart_progress_indicator.dart';
 import '../widgets/home_app_bar.dart';
@@ -25,9 +26,10 @@ class HomeScreen extends StatefulWidget {
   _HomeScreenState createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin<HomeScreen>{
   final _controller = CardSwiperController();
   late final User _user;
+  var _userAvatar;
   Position? _position;
   List<Map<String, dynamic>> _allProfiles = [];
   bool _loading = true;
@@ -35,15 +37,36 @@ class _HomeScreenState extends State<HomeScreen> {
   Key _swiperKey = UniqueKey();
   int _currentIndex = 0; // swiped cards count
   int _selectedNavIndex = 0; // bottom navigation index
+  late final AnimationController _rippleController;
+  
+
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _rippleController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 4),
+    )..repeat();
+     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _rippleController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
     _user = FirebaseAuth.instance.currentUser!;
+    final userinlist = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(_user.uid)
+        .get();
+
+    final usdata = userinlist.data();
+    _userAvatar = usdata?['photoUrls'][0];
+
     _position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
 
     final snap = await FirebaseFirestore.instance.collection('users').get();
@@ -89,16 +112,16 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-
   Future<void> _onCardTap(Map<String, dynamic> data) async {
     final liked = await Navigator.push<bool>(
       context,
       MaterialPageRoute(builder: (_) => ProfileDetailScreen(data: data)),
     );
+
     if (liked == true) {
-      context.read<SwipeBloc>().add(SwipeLike(data['uid'] as String));
-      _controller.swipe(CardSwiperDirection.right);
-    }
+        context.read<SwipeBloc>().add(SwipeLike(data['uid'] as String));
+        _controller.swipe(CardSwiperDirection.right);
+      }
   }
 
   void _onNavItemTapped(int index) {
@@ -127,9 +150,27 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (isEnd) {
       return Scaffold(
-        appBar: HomeAppBar(onFilterTap: _showFilters),
-        body: const Center(child: Text('Hai visualizzato tutti i profili.')),
-        bottomNavigationBar: HomeBottomNavBar(
+        appBar: HomeAppBar(autoimplyLeading: false, onFilterTap: _showFilters),
+        body: SafeArea(
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text(
+                'Hai visualizzato tutti i profili.',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 20),
+              RippleAvatar(
+                controller: _rippleController,
+                imageUrl: _userAvatar,
+                imageSize: 100.0,
+              ),
+            ],
+          ),
+        ),
+      ),
+      bottomNavigationBar: HomeBottomNavBar(
               currentIndex: _selectedNavIndex,
               onTap: _onNavItemTapped,
             ),

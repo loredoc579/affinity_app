@@ -4,8 +4,9 @@ import 'package:flutter/material.dart';
 /// una callback per aprire il filter sheet.
 class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback onFilterTap;
+  final bool? autoimplyLeading;
 
-  const HomeAppBar({Key? key, required this.onFilterTap}) : super(key: key);
+  const HomeAppBar({Key? key, this.autoimplyLeading, required this.onFilterTap}) : super(key: key);
 
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
@@ -13,6 +14,7 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     return AppBar(
+      automaticallyImplyLeading: autoimplyLeading ?? true,
       title: const Text('Affinity'),
       actions: [
         IconButton(
