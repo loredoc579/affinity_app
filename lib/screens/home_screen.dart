@@ -38,7 +38,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   int _currentIndex = 0; // swiped cards count
   int _selectedNavIndex = 0; // bottom navigation index
   late final AnimationController _rippleController;
-  
+  final DraggableScrollableController _sheetController =
+      DraggableScrollableController();
 
 
   @override
@@ -113,15 +114,22 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Future<void> _onCardTap(Map<String, dynamic> data) async {
-    final liked = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(builder: (_) => ProfileDetailScreen(data: data)),
-    );
+    // final liked = await Navigator.push<bool>(
+    //   context,
+    //   MaterialPageRoute(builder: (_) => ProfileDetailScreen(data: data)),
+    // );
 
-    if (liked == true) {
-        context.read<SwipeBloc>().add(SwipeLike(data['uid'] as String));
-        _controller.swipe(CardSwiperDirection.right);
-      }
+    // if (liked == true) {
+    //     context.read<SwipeBloc>().add(SwipeLike(data['uid'] as String));
+    //     _controller.swipe(CardSwiperDirection.right);
+    // }
+
+        // Apri il pannello a metà schermo
+    _sheetController.animateTo(
+      0.5,
+      duration: Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
   }
 
   void _onNavItemTapped(int index) {
@@ -191,30 +199,41 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               controller: _controller,
               cardsCount: list.length,
               numberOfCardsDisplayed: displayed,
+              // consentiamo solo swipe orizzontali per like/nope
+              allowedSwipeDirection: AllowedSwipeDirection.only(left: true, right: true),
               onSwipe: (prev, curr, dir) {
                 final uid = list[prev]['uid'] as String;
                 if (dir == CardSwiperDirection.left) {
                   context.read<SwipeBloc>().add(SwipeNope(uid));
                 } else if (dir == CardSwiperDirection.right) {
                   context.read<SwipeBloc>().add(SwipeLike(uid));
-                } else if (dir == CardSwiperDirection.top) {
-                  context.read<SwipeBloc>().add(SwipeSuperlike(uid));
                 }
-                if (curr != null) {
-                  setState(() => _currentIndex = curr);
-                }
-                return dir != CardSwiperDirection.bottom;
+                if (curr != null) setState(() => _currentIndex = curr);
+                return dir == CardSwiperDirection.left || dir == CardSwiperDirection.right;
               },
               onEnd: () {
                 if (mounted) setState(() => isEnd = true);
               },
-              cardBuilder: (_, i, __, ___) => SwipeCard(
-                data: list[i],
-                onTap: () => _onCardTap(list[i]),
-                onLike: () => _controller.swipe(CardSwiperDirection.right),
-                onNope: () => _controller.swipe(CardSwiperDirection.left),
-                onSuperlike: () => _controller.swipe(CardSwiperDirection.top),
-              ),
+              cardBuilder: (context, i, _, __) {
+                final data = list[i];
+                final uid = data['uid'] as String;
+
+                return SwipeCard(
+                  data: data,
+                  onNope: () {
+                    _controller.swipe(CardSwiperDirection.left);
+                    context.read<SwipeBloc>().add(SwipeNope(uid));
+                  },
+                  onSuperlike: () {
+                    _controller.swipe(CardSwiperDirection.top);
+                    context.read<SwipeBloc>().add(SwipeSuperlike(uid));
+                  },
+                  onLike: () {
+                    _controller.swipe(CardSwiperDirection.right);
+                    context.read<SwipeBloc>().add(SwipeLike(uid));
+                  },
+                );
+              },
             ),
             bottomNavigationBar: HomeBottomNavBar(
               currentIndex: _selectedNavIndex,

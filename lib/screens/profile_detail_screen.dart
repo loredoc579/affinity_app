@@ -8,14 +8,10 @@ class ProfileDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(data['name'] ?? 'Profilo'),
-      ),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+    return ListView(
+      shrinkWrap: true,
+      physics: NeverScrollableScrollPhysics(),
+      children: [
             // Immagine profilo a piena larghezza
             if (data['photoUrl'] != null)
               Image.network(
@@ -81,8 +77,6 @@ class ProfileDetailScreen extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
+        );
   }
 }
