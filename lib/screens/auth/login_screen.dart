@@ -67,7 +67,7 @@ class LoginScreen extends StatelessWidget {
                 onPressed: () async {
                   final messenger = ScaffoldMessenger.of(context);
                   try {
-                    final user = await signInWithFacebook();  // restituisce User?
+                    final user = await getAuthService().signInWithFacebook(); 
                     if (user != null) {
                       // Sostituisci lo stack con la HomeScreen
                       Navigator.of(context).pushNamedAndRemoveUntil('/home', (_) => false);

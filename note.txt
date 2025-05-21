@@ -2,4 +2,19 @@ flutter clean
 flutter pub get
 flutter run -d web-server --web-hostname localhost --web-port 5678
 
+cd C:\inetpub\affinity_app            # assicurati di essere nella root del progetto
+flutter pub outdated                  # vedi quali pacchetti puoi aggiornare
+# (modifica pubspec.yaml se vuoi cambiare versioni)
+flutter pub upgrade                   # aggiorna alle versioni permise dai nuovi vincoli
+
+flutter config --no-enable-macos-desktop  # disabilita il supporto desktop macOS
+flutter clean
+flutter pub get
+flutter run                          # rilancia sul tuo Redmi 7
+
+
+flutter run -d c7c52ae6
+
 bucket: affinity-9e25e.firebasestorage.app
+
+applicationId = "com.example.affinity_app"
