@@ -18,3 +18,8 @@ flutter run -d c7c52ae6
 bucket: affinity-9e25e.firebasestorage.app
 
 applicationId = "com.example.affinity_app"
+
+# installa su user 0 (bass bon)
+adb install --user 0 -r -t build/app/outputs/flutter-apk/app-debug.apk
+# Se sai che è su user 0:
+adb shell am start --user 0 -n com.example.affinity_app/.MainActivity

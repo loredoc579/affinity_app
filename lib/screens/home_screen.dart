@@ -68,7 +68,45 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final usdata = userinlist.data();
     _userAvatar = usdata?['photoUrls'][0];
 
-    _position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+    // 1) Verifica lo stato dei permessi
+    LocationPermission permission = await Geolocator.checkPermission();
+     if (permission == LocationPermission.denied) {
+      // 2) Richiedili
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        // Utente ha negato → mostra messaggio e esci
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Permesso posizione negato'))
+        );
+        return;
+      }
+    }
+    if (permission == LocationPermission.deniedForever) {
+      // Utente ha negato per sempre → invitalo alle impostazioni
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Permesso posizione negato permanentemente'),
+          action: SnackBarAction(
+            label: 'Impostazioni',
+            onPressed: () => Geolocator.openAppSettings(),
+          ),
+        ),
+      );
+      return;
+    }
+    // 3) Oramai permessi OK → ottieni la posizione
+    try {
+      _position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
+      // usa pos.latitude e pos.longitude
+    } on Exception catch (e) {
+      // altri errori nativi
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Errore geolocalizzazione: $e'))
+      );
+    }
 
     final snap = await FirebaseFirestore.instance.collection('users').get();
     _allProfiles = snap.docs
@@ -189,6 +227,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       builder: (context, state) {
         if (state is SwipeLoadSuccess) {
           final list = state.profiles;
+
+          // Se non ci sono carte, mostra un messaggio
+          if (list.isEmpty) {
+            return const Center(child: Text('Nessuna carta da mostrare'));
+          }
+
           final remaining = list.length - _currentIndex;
           final displayed = remaining >= 2 ? 2 : remaining;
 

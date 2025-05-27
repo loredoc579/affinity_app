@@ -7,6 +7,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';               // ← import Provider
 
+import 'bloc/swipe_event.dart';
 import 'screens/home_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/signup_screen.dart';
@@ -21,32 +22,55 @@ import 'bloc/swipe_bloc.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: const FirebaseOptions(
-      apiKey: "AIzaSyCKYB6X4-8S-pI3Xjec26badT5BxI4LQ38",
-      authDomain: "affinity-9e25e.firebaseapp.com",
-      projectId: "affinity-9e25e",
-      storageBucket: "affinity-9e25e.firebasestorage.app",
-      messagingSenderId: "767355252810",
-      appId: "1:767355252810:web:11cf87c4904dd764c9f6b3"
-    ),
-  );
+  debugPrint('🔄 main(): WidgetsBinding initialized');
+
+    try {
+    debugPrint('🔄 main(): Trying Firebase.initializeApp()');
+    await Firebase.initializeApp(
+      options: const FirebaseOptions(
+        apiKey: "AIzaSyCKYB6X4-8S-pI3Xjec26badT5BxI4LQ38",
+        authDomain: "affinity-9e25e.firebaseapp.com",
+        projectId: "affinity-9e25e",
+        storageBucket: "affinity-9e25e.firebasestorage.app",
+        messagingSenderId: "767355252810",
+        appId: "1:767355252810:web:11cf87c4904dd764c9f6b3"
+      ),
+    );
+    debugPrint('✅ main(): Firebase.initializeApp() completed');
+  } on FirebaseException catch (e) {
+    if (e.code == 'duplicate-app') {
+      debugPrint('⚠️ Firebase already initialized, skipping');
+    } else {
+      rethrow;
+    }
+  }
+
 
   await setupFacebook(); // inizializza fbInit qui
   
-runApp(
-    MultiProvider(
+  runApp(
+    // 1) Prima i Bloc
+    MultiBlocProvider(
       providers: [
-        // 1) BlocProvider per lo SwipeBloc
         BlocProvider<SwipeBloc>(
-          create: (_) => SwipeBloc(SwipeService()),
+          create: (_) =>
+            // inietta subito l'evento di caricamento
+            SwipeBloc(SwipeService())
+              ..add(LoadProfiles([])), // carica la lista vuota inizialmente
         ),
-        // 2) ChangeNotifierProvider per il FilterModel
-        ChangeNotifierProvider<FilterModel>(
-          create: (_) => FilterModel(),
-        ),
+        // altri BlocProvider se ti servono...
       ],
-      child: const AffinityApp(),
+      child: 
+      // 2) Poi i ChangeNotifier
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<FilterModel>(
+            create: (_) => FilterModel(),
+          ),
+          // altri ChangeNotifierProvider...
+        ],
+        child: const AffinityApp(),
+      ),
     ),
   );
 }
