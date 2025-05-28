@@ -5,6 +5,7 @@ import 'package:flutter_card_swiper/flutter_card_swiper.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:geolocator/geolocator.dart';
 
+
 import '../bloc/swipe_bloc.dart';
 import '../bloc/swipe_event.dart';
 import '../bloc/swipe_state.dart';
@@ -19,7 +20,6 @@ import '../widgets/heart_progress_indicator.dart';
 import '../widgets/home_app_bar.dart';
 import '../widgets/home_bottom_nav_bar.dart';
 
-import 'profile_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -27,8 +27,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin<HomeScreen>{
-  final _controller = CardSwiperController();
   late final User _user;
+  late final CardSwiperController _controller;
   var _userAvatar;
   Position? _position;
   List<Map<String, dynamic>> _allProfiles = [];
@@ -41,10 +41,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   final DraggableScrollableController _sheetController =
       DraggableScrollableController();
 
-
   @override
   void initState() {
     super.initState();
+    _controller = CardSwiperController();
     _rippleController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 4),
@@ -234,51 +234,67 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           }
 
           final remaining = list.length - _currentIndex;
-          final displayed = remaining >= 2 ? 2 : remaining;
+          final displayed = remaining.clamp(1, 2);
+
+          // PRECACHE: si esegue in post frame, così non blocca il build
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            for (var p in list.take(displayed)) {
+              precacheImage(NetworkImage(p['photoUrls'][0] as String), context);
+            }
+          });
 
           return Scaffold(
             appBar: HomeAppBar(onFilterTap: _showFilters),
             body: CardSwiper(
-              key: _swiperKey,
-              controller: _controller,
-              cardsCount: list.length,
-              numberOfCardsDisplayed: displayed,
-              // consentiamo solo swipe orizzontali per like/nope
-              allowedSwipeDirection: AllowedSwipeDirection.only(left: true, right: true),
-              onSwipe: (prev, curr, dir) {
-                final uid = list[prev]['uid'] as String;
-                if (dir == CardSwiperDirection.left) {
-                  context.read<SwipeBloc>().add(SwipeNope(uid));
-                } else if (dir == CardSwiperDirection.right) {
-                  context.read<SwipeBloc>().add(SwipeLike(uid));
-                }
-                if (curr != null) setState(() => _currentIndex = curr);
-                return dir == CardSwiperDirection.left || dir == CardSwiperDirection.right;
-              },
-              onEnd: () {
-                if (mounted) setState(() => isEnd = true);
-              },
-              cardBuilder: (context, i, _, __) {
-                final data = list[i];
-                final uid = data['uid'] as String;
-
-                return SwipeCard(
-                  data: data,
-                  onNope: () {
-                    _controller.swipe(CardSwiperDirection.left);
+                key: _swiperKey,
+                controller: _controller,
+                cardsCount: list.length,
+                numberOfCardsDisplayed: 2,   // mostra due carte per un rendering più fluido
+                scale: 0.8,                  // scala per la seconda carta
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                threshold: 50,               // soglia di pixel per il trigger dello swipe
+                maxAngle: 20,                // angolo massimo di rotazione
+                duration: const Duration(milliseconds: 200), // durata dell'animazione di swipe
+                // consentiamo solo swipe orizzontali per like/nope
+                allowedSwipeDirection: AllowedSwipeDirection.only(left: true, right: true),
+                
+                onSwipe: (prev, curr, dir) {
+                  final uid = list[prev]['uid'] as String;
+                  if (dir == CardSwiperDirection.left) {
                     context.read<SwipeBloc>().add(SwipeNope(uid));
-                  },
-                  onSuperlike: () {
-                    _controller.swipe(CardSwiperDirection.top);
-                    context.read<SwipeBloc>().add(SwipeSuperlike(uid));
-                  },
-                  onLike: () {
-                    _controller.swipe(CardSwiperDirection.right);
+                  } else if (dir == CardSwiperDirection.right) {
                     context.read<SwipeBloc>().add(SwipeLike(uid));
-                  },
-                );
-              },
-            ),
+                  }
+                  if (curr != null) setState(() => _currentIndex = curr);
+                  return dir == CardSwiperDirection.left || dir == CardSwiperDirection.right;
+                },
+                onEnd: () {
+                  if (mounted) setState(() => isEnd = true);
+                },
+                cardBuilder: (context, i, _, __) {
+                  final data = list[i];
+                  final uid = data['uid'] as String;
+
+                  return RepaintBoundary(
+                    child:SwipeCard(
+                      data: data,
+                      onNope: () {
+                        _controller.swipe(CardSwiperDirection.left);
+                        context.read<SwipeBloc>().add(SwipeNope(uid));
+                      },
+                      onSuperlike: () {
+                        _controller.swipe(CardSwiperDirection.top);
+                        context.read<SwipeBloc>().add(SwipeSuperlike(uid));
+                      },
+                      onLike: () {
+                        _controller.swipe(CardSwiperDirection.right);
+                        context.read<SwipeBloc>().add(SwipeLike(uid));
+                      },
+                    ),
+                  );
+                },
+              ),
+            
             bottomNavigationBar: HomeBottomNavBar(
               currentIndex: _selectedNavIndex,
               onTap: _onNavItemTapped,
