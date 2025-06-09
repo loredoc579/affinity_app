@@ -275,8 +275,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   final data = list[i];
                   final uid = data['uid'] as String;
 
-                  return RepaintBoundary(
-                    child:SwipeCard(
+                  return SwipeCard(
                       data: data,
                       onNope: () {
                         _controller.swipe(CardSwiperDirection.left);
@@ -290,8 +289,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         _controller.swipe(CardSwiperDirection.right);
                         context.read<SwipeBloc>().add(SwipeLike(uid));
                       },
-                    ),
-                  );
+                    );
                 },
               ),
             

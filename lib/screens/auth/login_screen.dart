@@ -64,6 +64,7 @@ class LoginScreen extends StatelessWidget {
             // ── Facebook ────────────────────────────────────────────────────────
             SignInButton(
                 Buttons.facebook,
+                text: "Facebook login",
                 onPressed: () async {
                   final messenger = ScaffoldMessenger.of(context);
                   try {

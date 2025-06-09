@@ -11,14 +11,18 @@ class AuthServiceMobile implements AuthService {
   Future<User?> signInWithFacebook() async {
     // 1) Login Facebook via plugin mobile
     final result = await FacebookAuth.instance.login(
-      permissions: ['public_profile', 'email'],
+      permissions: ['public_profile'],
+      loginBehavior: LoginBehavior.dialogOnly,   
     );
+    print('LoginStatus: ${result.status}');
+    print('Message:    ${result.message}');
+    print('AccessTok:  ${result.accessToken}');
     if (result.status != LoginStatus.success || result.accessToken == null) {
       return null;
     }
 
     // 2) Sign in su Firebase
-    final credential = FacebookAuthProvider.credential(result.accessToken!.token);
+    final credential = FacebookAuthProvider.credential(result.accessToken!.tokenString);
     final userCred = await FirebaseAuth.instance.signInWithCredential(credential);
     final user = userCred.user;
 

@@ -34,81 +34,89 @@ class SwipeCard extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.all(8.0),
-      child: Card(
-        clipBehavior: Clip.hardEdge,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16.0),
-        ),
-        child: SizedBox(
-          height: cardHeight * 1,
-          width: double.infinity,
-          child: ListView(
-            physics: const BouncingScrollPhysics(),
-            padding: EdgeInsets.zero,
-            children: [
-              // Full image section with overlays
-              SizedBox(
-                height: cardHeight * 0.87,
-                width: double.infinity,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    // Background image
-                    CachedNetworkImage(
-                      imageUrl: photoUrl,
-                      placeholder: (ctx, url) => const Center(
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                      errorWidget: (ctx, url, error) => const Center(
-                        child: Icon(Icons.error, size: 40),
-                      ),
-                      fit: BoxFit.cover,
-                    ),
-                    // Title text
-                    Positioned(
-                      bottom: cardHeight * 0.2,
-                      left: 16,
-                      right: 16,
-                      child: Text(
-                        titleText,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: fontSize,
-                          fontWeight: FontWeight.bold,
-                          shadows: const [
-                            Shadow(
-                              blurRadius: 6.0,
-                              color: Colors.black45,
-                              offset: Offset(0, 2),
-                            ),
-                          ],
+      child: RepaintBoundary(
+        child: Card(
+          clipBehavior: Clip.hardEdge,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16.0),
+          ),
+          child: SizedBox(
+            height: cardHeight,
+            width: double.infinity,
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                children: [
+                  // Image section
+                  SizedBox(
+                    height: cardHeight * 0.87,
+                    width: double.infinity,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        CachedNetworkImage(
+                          imageUrl: photoUrl,
+                          placeholder: (ctx, url) => const Center(
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          errorWidget: (ctx, url, error) => const Center(
+                            child: Icon(Icons.error, size: 40),
+                          ),
+                          fit: BoxFit.cover,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                        Positioned(
+                          bottom: cardHeight * 0.2,
+                          left: 16,
+                          right: 16,
+                          child: Text(
+                            titleText,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: fontSize,
+                              fontWeight: FontWeight.bold,
+                              shadows: const [
+                                Shadow(
+                                  blurRadius: 6.0,
+                                  color: Colors.black45,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Positioned(
+                          bottom: cardHeight * 0.08,
+                          left: 0,
+                          right: 0,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              _buildActionButton(Icons.clear, Colors.red, onNope),
+                              _buildActionButton(Icons.star, Colors.blue, onSuperlike),
+                              _buildActionButton(Icons.favorite, Colors.green, onLike),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    // Action buttons
-                    Positioned(
-                      bottom: cardHeight * 0.08,
-                      left: 0,
-                      right: 0,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          _buildActionButton(Icons.clear, Colors.red, onNope),
-                          _buildActionButton(Icons.star, Colors.blue, onSuperlike),
-                          _buildActionButton(Icons.favorite, Colors.green, onLike),
-                        ],
-                      ),
+                  ),
+                  // Details and buttons scrollable
+                  Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        ProfileDetailScreen(data: data),
+                        const SizedBox(height: 16.0),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              // Profile details below
-              ProfileDetailScreen(data: data),
-              const SizedBox(height: 16.0),
-            ],
+            ),
           ),
         ),
       ),

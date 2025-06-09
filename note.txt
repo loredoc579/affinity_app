@@ -1,3 +1,6 @@
+fb id: 1813328279214129
+fb android hash: Bb+iibXraNuyUmEQePfyEDtPcWY=
+
 flutter clean
 flutter pub get
 flutter run -d web-server --web-hostname localhost --web-port 5678
@@ -13,7 +16,9 @@ flutter pub get
 flutter run                          # rilancia sul tuo Redmi 7
 
 
-flutter run -d c7c52ae6
+flutter run -d c7c52ae6 --verbose
+flutter run --profile -d c7c52ae6
+flutter run --release -d c7c52ae6
 
 bucket: affinity-9e25e.firebasestorage.app
 

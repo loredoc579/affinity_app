@@ -23,7 +23,7 @@ class FilterManager {
 
     showModalBottomSheet(
       context: context,
-      builder: (_) => FilterSheet(
+      builder: (sheetContext) => FilterSheet(
         ageRange: filter.ageRange,
         maxDistance: filter.maxDistance,
         genderFilter: filter.gender,
@@ -57,7 +57,7 @@ class FilterManager {
           // Ricarica profili filtrati
           dispatchLoad(context, allProfiles, position);
 
-          Navigator.pop(context);
+          Navigator.of(sheetContext).pop(); // usa sheetContext, non quello esterno
         },
       ),
     );
