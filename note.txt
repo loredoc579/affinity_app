@@ -20,6 +20,15 @@ flutter run -d c7c52ae6 --verbose
 flutter run --profile -d c7c52ae6
 flutter run --release -d c7c52ae6
 
+--esecuzione piu rapida
+cd android
+.\gradlew.bat installDebug
+--attacco al processo
+flutter attach
+--su un altro terminal vedo i log
+flutter logs
+
+
 bucket: affinity-9e25e.firebasestorage.app
 
 applicationId = "com.example.affinity_app"
