@@ -8,7 +8,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';               // ← import Provider
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:permission_handler/permission_handler.dart' as ph;
 
 import 'bloc/swipe_event.dart';
 import 'screens/home_screen.dart';
@@ -27,8 +27,11 @@ final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
 
 // è richiamato quando la notifica arriva mentre l’app è chiusa/background
+// 1) Funzione top-level, non in una classe
+// 2) Annotata per dire al tree-shaker di non eliminarla
+@pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
+  await initializeFirebase();
   // qui puoi loggare o salvare il payload per statistiche
   print('✅ BG message received: ${message.messageId}');
 }
@@ -40,16 +43,7 @@ void main() async {
 
   try {
     debugPrint('🔄 main(): Trying Firebase.initializeApp()');
-    await Firebase.initializeApp(
-      options: const FirebaseOptions(
-        apiKey: "AIzaSyCKYB6X4-8S-pI3Xjec26badT5BxI4LQ38",
-        authDomain: "affinity-9e25e.firebaseapp.com",
-        projectId: "affinity-9e25e",
-        storageBucket: "affinity-9e25e.firebasestorage.app",
-        messagingSenderId: "767355252810",
-        appId: "1:767355252810:web:11cf87c4904dd764c9f6b3"
-      ),
-    );
+    await initializeFirebase();
     debugPrint('✅ main(): Firebase.initializeApp() completed');
   } on FirebaseException catch (e) {
     if (e.code == 'duplicate-app') {
@@ -69,9 +63,9 @@ void main() async {
       debugPrint('🔄 main(): Initializing Firebase Messaging for Android');
 
       // Solo Android 13+ richiede esplicitamente la permission
-      var status = await Permission.notification.status;
+      var status = await ph.Permission.notification.status;
       if (status.isDenied) {
-        status = await Permission.notification.request();
+        status = await ph.Permission.notification.request();
       }
       debugPrint('🚨 Notification permission status: $status');
 
@@ -133,6 +127,19 @@ void main() async {
         ],
         child: const AffinityApp(),
       ),
+    ),
+  );
+}
+
+Future<void> initializeFirebase() async {
+  await Firebase.initializeApp(
+    options: const FirebaseOptions(
+      apiKey: "AIzaSyCKYB6X4-8S-pI3Xjec26badT5BxI4LQ38",
+      authDomain: "affinity-9e25e.firebaseapp.com",
+      projectId: "affinity-9e25e",
+      storageBucket: "affinity-9e25e.firebasestorage.app",
+      messagingSenderId: "767355252810",
+      appId: "1:767355252810:web:11cf87c4904dd764c9f6b3"
     ),
   );
 }
