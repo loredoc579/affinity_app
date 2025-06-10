@@ -1,4 +1,5 @@
 import 'package:affinity_app/widgets/heart_progress_indicator.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -6,6 +7,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';               // ← import Provider
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'bloc/swipe_event.dart';
 import 'screens/home_screen.dart';
@@ -18,13 +21,24 @@ import 'models/filter_model.dart';                     // ← il tuo FilterModel
 
 import 'services/swipe_service.dart';
 import 'bloc/swipe_bloc.dart';
+import 'dart:io' show Platform;
+
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
+
+// è richiamato quando la notifica arriva mentre l’app è chiusa/background
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  // qui puoi loggare o salvare il payload per statistiche
+  print('✅ BG message received: ${message.messageId}');
+}
 
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   debugPrint('🔄 main(): WidgetsBinding initialized');
 
-    try {
+  try {
     debugPrint('🔄 main(): Trying Firebase.initializeApp()');
     await Firebase.initializeApp(
       options: const FirebaseOptions(
@@ -45,8 +59,56 @@ void main() async {
     }
   }
 
-
   await setupFacebook(); // inizializza fbInit qui
+
+    // ④ Registra l’handler in background
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  // ① Inizializza Firebase Messaging Android Notifications
+  if (Platform.isAndroid) {
+      debugPrint('🔄 main(): Initializing Firebase Messaging for Android');
+
+      // Solo Android 13+ richiede esplicitamente la permission
+      var status = await Permission.notification.status;
+      if (status.isDenied) {
+        status = await Permission.notification.request();
+      }
+      debugPrint('🚨 Notification permission status: $status');
+
+      const channel = AndroidNotificationChannel(
+        'high_importance_channel', // deve combaciare con il meta-data
+        'Notifiche Importanti',
+        description: 'Canale per notifiche importanti',
+        importance: Importance.high,
+      );
+
+      await flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(channel);
+
+          // ⑤ Listener foreground
+      FirebaseMessaging.onMessage.listen((RemoteMessage msg) {
+        print('✅ FG message received: ${msg.messageId}');
+
+        flutterLocalNotificationsPlugin.show(
+          msg.notification.hashCode,
+          msg.notification?.title,
+          msg.notification?.body,
+          NotificationDetails(
+            android: AndroidNotificationDetails(
+              channel.id, 
+              channel.name,
+              channelDescription: channel.description,
+              icon: 'ic_notification',      // la tua icona bianca
+              importance: Importance.max,    // ← massima importanza
+              priority: Priority.high,       // ← massima priorità
+              playSound: true,               // ← riproduci suono
+            ),
+          ),
+        );
+      });
+  }
   
   runApp(
     // 1) Prima i Bloc

@@ -3,26 +3,79 @@
     {
       "target": "prod",
       "public": "build/web",
-      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
       "rewrites": [
-        { "source": "**", "destination": "/index.html" }
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
       ]
     },
     {
       "target": "dev",
       "public": "build/web",
-      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
       "rewrites": [
-        { "source": "/main.dart.js.map",               "destination": "/main.dart.js.map" },
-        { "source": "/flutter_service_worker.js.map",  "destination": "/flutter_service_worker.js.map" },
-        { "source": "/AssetManifest.json.map",         "destination": "/AssetManifest.json.map" },
-        { "source": "/FontManifest.json.map",          "destination": "/FontManifest.json.map" },
-        
-        { "source": "/flutter_service_worker.js", "destination": "/flutter_service_worker.js" },
-        { "source": "/AssetManifest.json",      "destination": "/AssetManifest.json" },
-        { "source": "/FontManifest.json",       "destination": "/FontManifest.json" },
-        { "source": "/version.json",            "destination": "/version.json" },
-        { "source": "**",                       "destination": "/index.html" }
+        {
+          "source": "/main.dart.js.map",
+          "destination": "/main.dart.js.map"
+        },
+        {
+          "source": "/flutter_service_worker.js.map",
+          "destination": "/flutter_service_worker.js.map"
+        },
+        {
+          "source": "/AssetManifest.json.map",
+          "destination": "/AssetManifest.json.map"
+        },
+        {
+          "source": "/FontManifest.json.map",
+          "destination": "/FontManifest.json.map"
+        },
+        {
+          "source": "/flutter_service_worker.js",
+          "destination": "/flutter_service_worker.js"
+        },
+        {
+          "source": "/AssetManifest.json",
+          "destination": "/AssetManifest.json"
+        },
+        {
+          "source": "/FontManifest.json",
+          "destination": "/FontManifest.json"
+        },
+        {
+          "source": "/version.json",
+          "destination": "/version.json"
+        },
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run lint"
       ]
     }
   ]

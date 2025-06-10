@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 
 import '../bloc/swipe_bloc.dart';
@@ -20,6 +21,7 @@ import '../widgets/heart_progress_indicator.dart';
 import '../widgets/home_app_bar.dart';
 import '../widgets/home_bottom_nav_bar.dart';
 
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -38,8 +40,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   int _currentIndex = 0; // swiped cards count
   int _selectedNavIndex = 0; // bottom navigation index
   late final AnimationController _rippleController;
-  final DraggableScrollableController _sheetController =
-      DraggableScrollableController();
 
   @override
   void initState() {
@@ -49,6 +49,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       vsync: this,
       duration: const Duration(seconds: 4),
     )..repeat();
+
+    _user = FirebaseAuth.instance.currentUser!;
+
+    _setupFirebaseMessaging();
+
      _loadData();
   }
 
@@ -58,8 +63,64 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     super.dispose();
   }
 
+  void _setupFirebaseMessaging() async {
+    final messaging = FirebaseMessaging.instance;
+
+    // Richiedi permessi (iOS)
+    await messaging.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
+    // Recupera e salva il token sul tuo Firestore
+    final token = await messaging.getToken();
+    if (token != null) {
+      print("Mio FCM token: $token");
+      await FirebaseFirestore.instance
+        .collection('users')
+        .doc(_user.uid)
+        .collection('fcmTokens')
+        .doc(token)
+        .set({ 'createdAt': FieldValue.serverTimestamp() });
+    }
+  
+    // Listener foreground: mostra un dialog se arriva una notifica
+    FirebaseMessaging.onMessage.listen((RemoteMessage msg) {
+        final notification = msg.notification;
+        final context    = navigatorKey.currentContext;
+        if (notification != null && context != null) {
+          showDialog(
+            context: context,
+            builder: (BuildContext dialogContext) {      // <— qui nominiamo il context
+              return AlertDialog(
+                title:   Text(notification.title  ?? "Nuova notifica"),
+                content: Text(notification.body   ?? ""),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(dialogContext);         // <— usiamo dialogContext
+                    },
+                    child: const Text("OK"),
+                  ),
+                ],
+              );
+            },
+          );
+        }
+      }
+    );
+
+    // Listener tap sulla notifica (quando l’utente apre la notifica)
+    FirebaseMessaging.onMessageOpenedApp.listen((msg) {
+      // qui puoi navigare direttamente alla chat, es:
+      // final otherUid = msg.data['otherUid'];
+      // navigatorKey.currentState?.pushNamed('/chat', arguments: otherUid);
+    });
+  }
+
   Future<void> _loadData() async {
-    _user = FirebaseAuth.instance.currentUser!;
+    
     final userinlist = await FirebaseFirestore.instance
         .collection('users')
         .doc(_user.uid)
@@ -67,6 +128,23 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     final usdata = userinlist.data();
     _userAvatar = usdata?['photoUrls'][0];
+
+    // al login / app init
+    final token = await FirebaseMessaging.instance.getToken();
+    if (token == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Errore ottenimento token FCM'))
+      );
+      return;
+    }
+
+    await FirebaseFirestore.instance
+      .collection('users')
+      .doc(_user.uid)
+      .collection('fcmTokens')
+      .doc(token)
+      .set({ 'createdAt': FieldValue.serverTimestamp() });
 
     // 1) Verifica lo stato dei permessi
     LocationPermission permission = await Geolocator.checkPermission();
@@ -148,25 +226,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           _swiperKey = UniqueKey();
         });
       },
-    );
-  }
-
-  Future<void> _onCardTap(Map<String, dynamic> data) async {
-    // final liked = await Navigator.push<bool>(
-    //   context,
-    //   MaterialPageRoute(builder: (_) => ProfileDetailScreen(data: data)),
-    // );
-
-    // if (liked == true) {
-    //     context.read<SwipeBloc>().add(SwipeLike(data['uid'] as String));
-    //     _controller.swipe(CardSwiperDirection.right);
-    // }
-
-        // Apri il pannello a metà schermo
-    _sheetController.animateTo(
-      0.5,
-      duration: Duration(milliseconds: 300),
-      curve: Curves.easeOut,
     );
   }
 
@@ -320,8 +379,22 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               onTap: _onNavItemTapped,
             ),
           );
+        } else if (state is SwipeMatched) {
+          showDialog(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: Text('È match! 🎉'),
+              content: Text('Puoi iniziare a chattare con questo utente.'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text('OK'),
+                ),
+              ],
+            ),
+          );
         }
-
+ 
         return const Scaffold(body: SizedBox.shrink());
       },
     );

@@ -22,3 +22,8 @@ class SwipeFailure extends SwipeState {
   const SwipeFailure(this.error);
   @override List<Object?> get props => [error];
 }
+
+class SwipeMatched extends SwipeState {
+  final String otherUid;
+  const SwipeMatched(this.otherUid);
+}

@@ -28,3 +28,9 @@ applicationId = "com.example.affinity_app"
 adb install --user 0 -r -t build/app/outputs/flutter-apk/app-debug.apk
 # Se sai che è su user 0:
 adb shell am start --user 0 -n com.example.affinity_app/.MainActivity
+
+/functions : per deployare le modifiche di index.js
+firebase deploy --only functions:onChatCreated
+
+utente prova id : wj9anhaw4cdj0fI1EHVCtqFat8Q2
+utente fb id: HqbyzepkLwO4mZBw2nvQQFghuTj2
