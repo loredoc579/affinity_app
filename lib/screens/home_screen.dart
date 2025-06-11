@@ -74,16 +74,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
 
     // Recupera e salva il token sul tuo Firestore
-    final token = await messaging.getToken();
-    if (token != null) {
-      print("Mio FCM token: $token");
-      await FirebaseFirestore.instance
-        .collection('users')
-        .doc(_user.uid)
-        .collection('fcmTokens')
-        .doc(token)
-        .set({ 'createdAt': FieldValue.serverTimestamp() });
-    }
+    // final token = await messaging.getToken();
+    // if (token != null) {
+    //   print("Mio FCM token: $token");
+    //   await FirebaseFirestore.instance
+    //     .collection('users')
+    //     .doc(_user.uid)
+    //     .collection('fcmTokens')
+    //     .doc(token)
+    //     .set({ 'createdAt': FieldValue.serverTimestamp() });
+    // }
   
     // Listener foreground: mostra un dialog se arriva una notifica
     FirebaseMessaging.onMessage.listen((RemoteMessage msg) {
@@ -139,12 +139,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       return;
     }
 
-    await FirebaseFirestore.instance
-      .collection('users')
-      .doc(_user.uid)
-      .collection('fcmTokens')
-      .doc(token)
-      .set({ 'createdAt': FieldValue.serverTimestamp() });
+    // await FirebaseFirestore.instance
+    //   .collection('users')
+    //   .doc(_user.uid)
+    //   .collection('fcmTokens')
+    //   .doc(token)
+    //   .set({ 'createdAt': FieldValue.serverTimestamp() });
 
     // 1) Verifica lo stato dei permessi
     LocationPermission permission = await Geolocator.checkPermission();

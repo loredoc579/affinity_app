@@ -19,6 +19,7 @@ import 'screens/auth/facebook_init.dart';
 
 import 'models/filter_model.dart';                     // ← il tuo FilterModel
 
+import 'services/notification_token_mapper.dart';
 import 'services/swipe_service.dart';
 import 'bloc/swipe_bloc.dart';
 import 'dart:io' show Platform;
@@ -55,6 +56,8 @@ void main() async {
 
   await setupFacebook(); // inizializza fbInit qui
 
+  NotificationTokenMapper().initialize();
+
     // ④ Registra l’handler in background
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
@@ -67,7 +70,8 @@ void main() async {
       if (status.isDenied) {
         status = await ph.Permission.notification.request();
       }
-      debugPrint('🚨 Notification permission status: $status');
+
+      debugPrint('🔄 Notification permission status: $status');
 
       const channel = AndroidNotificationChannel(
         'high_importance_channel', // deve combaciare con il meta-data

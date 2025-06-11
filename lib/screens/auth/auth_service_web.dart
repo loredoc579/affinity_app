@@ -6,10 +6,15 @@ import 'dart:js_util' as js_util;
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 import 'auth_service_stub.dart';
 
-class AuthServiceWeb implements AuthService {
+class AuthServiceImpl implements AuthService {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseMessaging _fcm = FirebaseMessaging.instance;
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+
   @override
   Future<User?> signInWithFacebook() async {
     // 1) faccio FB.login via JS
@@ -53,6 +58,21 @@ class AuthServiceWeb implements AuthService {
     }
     return user;
   }
+  
+  @override
+  Future<void> signOut() async {
+    final user  = _auth.currentUser;
+    final token = await _fcm.getToken();
+
+    if (user != null && token != null) {
+      // 1) cancella il mapping token→uid su Firestore
+      await _db.collection('tokens').doc(token).delete();
+      // 2) cancella il token lato FCM
+      await _fcm.deleteToken();
+    }
+    // 3) esegui il logout
+    await _auth.signOut();
+  }
 }
 
-AuthService getAuthService() => AuthServiceWeb();
+AuthService getAuthService() => AuthServiceImpl();

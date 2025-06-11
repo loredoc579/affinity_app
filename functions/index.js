@@ -1,81 +1,69 @@
 const admin = require("firebase-admin");
 const {onDocumentCreated} = require("firebase-functions/v2/firestore");
 
+// Inizializza l’SDK Admin (eventualmente passa projectId esplicito)
 admin.initializeApp();
-
-console.log("Messaging projectId:", admin.app().options.projectId);
-console.log("Admin options:", JSON.stringify(admin.app().options, null, 2));
-console.log("env GCP_PROJECT         :", process.env.GCP_PROJECT);
-console.log("env GCLOUD_PROJECT      :", process.env.GCLOUD_PROJECT);
-console.log("env GOOGLE_CLOUD_PROJECT:", process.env.GOOGLE_CLOUD_PROJECT);
-console.log("FIREBASE_CONFIG         :", process.env.FIREBASE_CONFIG);
-console.log("admin.app().options     :", admin.app().options);
 
 exports.onChatCreated = onDocumentCreated(
     "chats/{chatId}",
     async (event) => {
-    // 1) event.data might be undefined
       const snap = event.data;
       if (!snap) {
         console.log("No snapshot available");
         return;
       }
 
-      // 2) Call .data() to get the actual document fields
-      const doc = snap.data();
-      if (!doc) {
-        console.log("Snapshot has no data()");
+      const chat = snap.data();
+      if (!chat || !Array.isArray(chat.participants)) {
+        console.log("Missing or invalid participants:", chat);
         return;
       }
 
-      const participants = doc.participants;
-      if (!Array.isArray(participants)) {
-        console.log("Missing or invalid participants field:", participants);
+      // 1) Prendi tutti i token dei partecipanti
+      const tokensSnap = await admin
+          .firestore()
+          .collection("tokens")
+          .where("uid", "in", chat.participants)
+          .where("tags", "array-contains", "chat")
+          .get();
+
+      const allTokens = tokensSnap.docs.map((d) => d.id);
+      if (allTokens.length === 0) {
+        console.log(`Nessun device attivo
+           per partecipanti=${chat.participants}`);
         return;
       }
 
-      // Fetch all FCM tokens for each participant
-      const tokensNested = await Promise.all(
-          participants.map(async (uid) => {
-            const qs = await admin
-                .firestore()
-                .collection("users")
-                .doc(uid)
-                .collection("fcmTokens")
-                .get();
-            return qs.docs.map((d) => d.id);
-          }),
+      // 2) Prepara i messaggi
+      const messages = allTokens.map((token) => ({
+        token,
+        notification: {
+          title: "Nuova chat creata! 💬",
+          body: "Hai una nuova conversazione, dai un’occhiata!",
+        },
+        data: {
+          chatId: event.params.chatId,
+        },
+      }));
+
+      // 3) Mappiamo ogni send() in una Promise
+      const sendPromises = messages.map((msg) =>
+        admin.messaging().send(msg),
       );
 
-      // Flatten and send
-      const allTokens = tokensNested.flat();
-      if (allTokens.length > 0) {
-        // Costruiamo un array di Promise, una per ogni token
-        const sendPromises = allTokens.map((token) =>
-          admin.messaging().send({
-            token,
-            notification: {
-              title: "È match! 🎉",
-              body: "Hai una nuova conversazione. Vai a vedere!",
-            },
-            // opzionale: aggiungi .data, .android, .apns…
-          }),
-        );
+      // 4) Le eseguiamo in parallelo e logghiamo i risultati
+      const results = await Promise.allSettled(sendPromises);
 
-        // E le eseguiamo in parallelo
-        const results = await Promise.allSettled(sendPromises);
+      const successCount = results.filter((r) =>
+        r.status === "fulfilled").length;
+      const failureCount = results.length - successCount;
+      console.log(`✅ Inviate ${successCount}/${results.length} 
+        notifiche; ${failureCount} fallite.`);
 
-        // Loggiamo un breve report
-        const sc = results.filter((r) => r.status === "fulfilled").length;
-        const fc = results.length - sc;
-        console.log(`✅ Send ${sc}/${results.length} notifies; ${fc} failed.`);
-        results.forEach((r, i) => {
-          if (r.status === "rejected") {
-            console.warn(` ❌ Token ${allTokens[i]} →`, r.reason);
-          } else {
-            console.log(` ✅ Token ${allTokens[i]} →`, r.value);
-          }
-        });
-      }
+      results.forEach((r, idx) => {
+        if (r.status === "rejected") {
+          console.warn(` ❌ Token ${allTokens[idx]} →`, r.reason);
+        }
+      });
     },
 );

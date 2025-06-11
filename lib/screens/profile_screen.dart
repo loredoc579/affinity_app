@@ -7,6 +7,8 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:typed_data';
 
+import './auth/auth_service.dart';
+
 // Import del HeartProgressIndicator personalizzato
 import '../widgets/heart_progress_indicator.dart';
 
@@ -146,6 +148,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
+              await signOut();
               await FirebaseAuth.instance.signOut();
               if (!mounted) return;
               Navigator.of(context)

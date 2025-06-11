@@ -1,14 +1,15 @@
-// lib/screens/auth/auth_service_stub.dart
+// auth_service_stub.dart
 
 import 'package:firebase_auth/firebase_auth.dart';
+// Conditional import: solo una implementazione (mobile o web) sarà inclusa
+import 'auth_service_mobile.dart'
+  if (dart.library.html) 'auth_service_web.dart';
 
-/// L’interfaccia AuthService ora restituisce sempre un [User?].
+/// Interfaccia comune a tutte le implementazioni
 abstract class AuthService {
-  /// Ritorna l'utente autenticato, o null.
   Future<User?> signInWithFacebook();
+  Future<void> signOut();
 }
 
-/// Il “fallback” se la piattaforma non è web né mobile.
-AuthService getAuthService() {
-  throw UnsupportedError('AuthService non implementato per questa piattaforma');
-}
+/// Restituisce l'implementazione concreta a runtime
+AuthService getAuthService() => AuthServiceImpl();

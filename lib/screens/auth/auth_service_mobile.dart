@@ -2,11 +2,16 @@
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 
 import 'auth_service_stub.dart';
 
-class AuthServiceMobile implements AuthService {
+class AuthServiceImpl implements AuthService {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseMessaging _fcm = FirebaseMessaging.instance;
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+
   @override
   Future<User?> signInWithFacebook() async {
     // 1) Login Facebook via plugin mobile
@@ -57,6 +62,17 @@ class AuthServiceMobile implements AuthService {
 
     return user;
   }
+
+  @override
+  Future<void> signOut() async {
+    final user  = _auth.currentUser;
+    final token = await _fcm.getToken();
+    if (user != null && token != null) {
+      await _db.collection('tokens').doc(token).delete();
+      await _fcm.deleteToken();
+    }
+    return _auth.signOut();
+  }
 }
 
-AuthService getAuthService() => AuthServiceMobile();
+AuthService getAuthService() => AuthServiceImpl();

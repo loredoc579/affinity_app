@@ -16,14 +16,10 @@ class LoginScreen extends StatelessWidget {
     final password = passwordController.text.trim();
 
     try {
-      debugPrint('signInWithEmailAndPassword waiting with email : $email');
-
       await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
-
-      debugPrint('signInWithEmailAndPassword executed with email : $email');
 
       // Porta l’utente alla home e svuota lo stack di login
       Navigator.of(context).pushAndRemoveUntil(

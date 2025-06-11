@@ -12,4 +12,8 @@ export 'auth_service_stub.dart'
 
 /// Compatibilità col vecchio codice:
 /// chiama internamente [getAuthService().login()]
-Future<User?> signInWithFacebook() => getAuthService().signInWithFacebook();
+Future<User?> signInWithFacebook() =>
+    getAuthService().signInWithFacebook();
+
+/// Esporta la funzione di logout dalla implementazione locale
+Future<void> signOut() => getAuthService().signOut();

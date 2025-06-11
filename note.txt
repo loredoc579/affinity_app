@@ -39,6 +39,10 @@ adb install --user 0 -r -t build/app/outputs/flutter-apk/app-debug.apk
 adb shell am start --user 0 -n com.example.affinity_app/.MainActivity
 
 /functions : per deployare le modifiche di index.js
+cd functions
+npm install
+cd ..
+--se non ci sono modifiche o dipendenze versioni di Node diverse direttamente:
 firebase deploy --only functions:onChatCreated
 
 utente prova id : wj9anhaw4cdj0fI1EHVCtqFat8Q2

@@ -1,4 +1,4 @@
-// addChat.js
+// addChatElement.js
 
 const admin = require('firebase-admin');
 
@@ -21,12 +21,11 @@ async function createOrReplaceChat() {
   try {
     const chatsRef = db.collection('chats');
 
-    // 1) Esegui una sola query con array-contains sul primo ID
+    // 2) Rimuovi eventuali chat esistenti tra i due partecipanti
     const snapshot = await chatsRef
       .where('participants', 'array-contains', participantIds[0])
       .get();
 
-    // 2) Filtra client-side i documenti che contengono anche il secondo ID
     const deletions = [];
     snapshot.forEach(doc => {
       const data = doc.data();
@@ -35,7 +34,6 @@ async function createOrReplaceChat() {
         data.participants.length === 2 &&
         data.participants.includes(participantIds[1])
       ) {
-        // Confronto ordinato per sicurezza
         const sortedCurrent = data.participants.slice().sort();
         if (
           sortedCurrent[0] === sortedTarget[0] &&
@@ -48,7 +46,25 @@ async function createOrReplaceChat() {
     });
     await Promise.all(deletions);
 
-    // 3) Crea un nuovo documento
+    // 3) **Prima di creare la chat**, tagga i token di entrambi gli utenti
+    for (const uid of participantIds) {
+      const tokensSnap = await db
+        .collection('tokens')
+        .where('uid', '==', uid)
+        .get();
+
+      const tagUpdates = tokensSnap.docs.map(tokenDoc =>
+        tokenDoc.ref.update({
+          tags: admin.firestore.FieldValue.arrayUnion('chat')
+        })
+      );
+      if (tagUpdates.length) {
+        await Promise.all(tagUpdates);
+        console.log(`Tag "chat" aggiunto ai token di ${uid}`);
+      }
+    }
+
+    // 4) Crea un nuovo documento chat
     const chatData = {
       lastMessage: "",
       lastUpdated: admin.firestore.FieldValue.serverTimestamp(),

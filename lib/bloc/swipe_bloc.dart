@@ -5,6 +5,7 @@ import '../services/swipe_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+
 /// Bloc che gestisce solo il caricamento iniziale e la registrazione dei like/nope/superlike
 /// Ora abilita automaticamente la creazione di chat in caso di match.
 class SwipeBloc extends Bloc<SwipeEvent, SwipeState> {
@@ -44,6 +45,18 @@ class SwipeBloc extends Bloc<SwipeEvent, SwipeState> {
     });
   }
 
+  /// Helper generico per aggiungere un tag a tutti i token di un utente
+  Future<void> _tagTokensForUser(String uid, String tag) async {
+    final tokensRef = FirebaseFirestore.instance.collection('tokens');
+    final snap = await tokensRef.where('uid', isEqualTo: uid).get();
+    // Per ogni documento token, un update merge su `tags`
+    for (final doc in snap.docs) {
+      await doc.reference.set({
+        'tags': FieldValue.arrayUnion([tag]),
+      }, SetOptions(merge: true));
+    }
+  }
+
   Future<void> _onSwipeLike(String otherUid, bool isSuperlike, Emitter<SwipeState> emit) async {
     final me = FirebaseAuth.instance.currentUser!.uid;
     final swipesCol = FirebaseFirestore.instance.collection('swipes');
@@ -64,7 +77,13 @@ class SwipeBloc extends Bloc<SwipeEvent, SwipeState> {
       .get();
 
     if (query.docs.isNotEmpty) {
-      // 3) Creo la chat esattamente come prima
+      // 3) Taggo i token per la chat (senza Cloud Function)
+      await Future.wait([
+        _tagTokensForUser(me, 'chat'),
+        _tagTokensForUser(otherUid, 'chat'),
+      ]);
+
+      // 4) Creo la chat esattamente come prima
       final uids = [me, otherUid]..sort();
       final chatId = '${uids[0]}_${uids[1]}';
       final chatRef = FirebaseFirestore.instance
