@@ -38,10 +38,11 @@ exports.onChatCreated = onDocumentCreated(
       const messages = allTokens.map((token) => ({
         token,
         notification: {
-          title: "Nuova chat creata! 💬",
-          body: "Hai una nuova conversazione, dai un’occhiata!",
+          title: "Hai un nuovo match! 🎉",
+          body: "Puoi iniziare a chattare con il tuo nuovo match.",
         },
         data: {
+          type: "new_chat",
           chatId: event.params.chatId,
         },
       }));

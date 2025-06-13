@@ -13,6 +13,7 @@ import '../bloc/swipe_state.dart';
 
 import '../models/filter_model.dart';
 
+import '../services/presence_service.dart';
 import '../utils/filter_manager.dart';
 
 import '../widgets/ripple_avatar.dart';
@@ -24,11 +25,15 @@ import '../widgets/home_bottom_nav_bar.dart';
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
   @override
   _HomeScreenState createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin<HomeScreen>{
+class _HomeScreenState extends State<HomeScreen>
+  with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  
+  final _presence = PresenceService();
   late final User _user;
   late final CardSwiperController _controller;
   var _userAvatar;
@@ -44,6 +49,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
+
     _controller = CardSwiperController();
     _rippleController = AnimationController(
       vsync: this,
@@ -54,13 +60,35 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     _setupFirebaseMessaging();
 
+    WidgetsBinding.instance.addObserver(this);
+
+    _presence.init();
+
      _loadData();
   }
 
   @override
   void dispose() {
     _rippleController.dispose();
+
+    // Rimuove l'osservatore e mette offline
+    WidgetsBinding.instance.removeObserver(this);
+    _presence.goOffline();
+
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    if (state == AppLifecycleState.paused) {
+      // l'app è andata in background
+      _presence.goOffline();
+    } else if (state == AppLifecycleState.resumed) {
+      // l'app è tornata in foreground
+      _presence.init();
+    }
   }
 
   void _setupFirebaseMessaging() async {
@@ -72,18 +100,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       badge: true,
       sound: true,
     );
-
-    // Recupera e salva il token sul tuo Firestore
-    // final token = await messaging.getToken();
-    // if (token != null) {
-    //   print("Mio FCM token: $token");
-    //   await FirebaseFirestore.instance
-    //     .collection('users')
-    //     .doc(_user.uid)
-    //     .collection('fcmTokens')
-    //     .doc(token)
-    //     .set({ 'createdAt': FieldValue.serverTimestamp() });
-    // }
   
     // Listener foreground: mostra un dialog se arriva una notifica
     FirebaseMessaging.onMessage.listen((RemoteMessage msg) {
@@ -139,13 +155,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       return;
     }
 
-    // await FirebaseFirestore.instance
-    //   .collection('users')
-    //   .doc(_user.uid)
-    //   .collection('fcmTokens')
-    //   .doc(token)
-    //   .set({ 'createdAt': FieldValue.serverTimestamp() });
-
     // 1) Verifica lo stato dei permessi
     LocationPermission permission = await Geolocator.checkPermission();
      if (permission == LocationPermission.denied) {
@@ -174,6 +183,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       );
       return;
     }
+    
     // 3) Oramai permessi OK → ottieni la posizione
     try {
       _position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);

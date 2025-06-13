@@ -7,6 +7,7 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:typed_data';
 
+import '../services/presence_service.dart';
 import './auth/auth_service.dart';
 
 // Import del HeartProgressIndicator personalizzato
@@ -149,7 +150,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
             icon: const Icon(Icons.logout),
             onPressed: () async {
               await signOut();
+              debugPrint("Utente disconnesso");
               await FirebaseAuth.instance.signOut();
+              debugPrint("Firebase disconnesso");
+              PresenceService().goOffline();
+              debugPrint("Presenza disconnessa");
               if (!mounted) return;
               Navigator.of(context)
                   .pushNamedAndRemoveUntil('/login', (route) => false);

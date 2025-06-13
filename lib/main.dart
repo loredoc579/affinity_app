@@ -1,4 +1,6 @@
+import 'package:affinity_app/screens/chat_list_screen.dart';
 import 'package:affinity_app/widgets/heart_progress_indicator.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 
@@ -16,13 +18,28 @@ import 'screens/auth/login_screen.dart';
 import 'screens/auth/signup_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/auth/facebook_init.dart';
+import 'screens/chat_screen.dart';  
 
 import 'models/filter_model.dart';                     // ← il tuo FilterModel
 
+import 'services/database_service.dart';
 import 'services/notification_token_mapper.dart';
+import 'services/presence_service.dart';
 import 'services/swipe_service.dart';
 import 'bloc/swipe_bloc.dart';
 import 'dart:io' show Platform;
+
+// 1) chiave globale per il Navigator
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+// 2) handler per il tap sulla notifica
+void _handleMessage(RemoteMessage? msg) {
+  final data = msg?.data;
+  if (data != null && data['type'] == 'new_chat' && data['chatId'] != null) {
+    navigatorKey.currentState
+        ?.pushNamed('/chat', arguments: data['chatId']);
+  }
+}
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
@@ -57,6 +74,8 @@ void main() async {
   await setupFacebook(); // inizializza fbInit qui
 
   NotificationTokenMapper().initialize();
+
+  await DatabaseService.instance.init();
 
     // ④ Registra l’handler in background
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
@@ -105,8 +124,20 @@ void main() async {
             ),
           ),
         );
-      });
+      });   
+
+      // ⑥ Listener per tap sulla notifica (background e terminated)
+      FirebaseMessaging.onMessageOpenedApp.listen(_handleMessage);
+      final initialMessage =
+          await FirebaseMessaging.instance.getInitialMessage();
+      _handleMessage(initialMessage); 
   }
+
+  // inizializza la presenza **una sola volta** subito dopo il login
+  FirebaseAuth.instance
+    .authStateChanges()
+    .firstWhere((user) => user != null)
+    .then((_) => PresenceService().init());
   
   runApp(
     // 1) Prima i Bloc
@@ -154,6 +185,7 @@ class AffinityApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: navigatorKey,   
       title: 'Affinity',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -166,6 +198,10 @@ class AffinityApp extends StatelessWidget {
         '/login': (context) => LoginScreen(),
         '/home': (context) => HomeScreen(),
         '/profile': (context) => ProfileScreen(),
+        '/chat': (context) => ChatScreen(
+            chatId:
+                ModalRoute.of(context)!.settings.arguments as String),
+        '/chats': (_) => ChatListScreen(),
       },
       // 👇 Questo StreamBuilder è ciò che rileva login/logout in tempo reale
       home: StreamBuilder<User?>(
