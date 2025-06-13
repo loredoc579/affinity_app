@@ -8,7 +8,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:provider/provider.dart';               // ← import Provider
+import 'package:provider/provider.dart';             
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart' as ph;
 
@@ -20,9 +20,8 @@ import 'screens/profile_screen.dart';
 import 'screens/auth/facebook_init.dart';
 import 'screens/chat_screen.dart';  
 
-import 'models/filter_model.dart';                     // ← il tuo FilterModel
+import 'models/filter_model.dart';                     
 
-import 'services/database_service.dart';
 import 'services/notification_token_mapper.dart';
 import 'services/presence_service.dart';
 import 'services/swipe_service.dart';
@@ -75,7 +74,7 @@ void main() async {
 
   NotificationTokenMapper().initialize();
 
-  await DatabaseService.instance.init();
+  await Firebase.initializeApp();
 
     // ④ Registra l’handler in background
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);

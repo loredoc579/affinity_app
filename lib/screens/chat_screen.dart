@@ -3,8 +3,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 
-import '../services/database_service.dart';
-
 class ChatScreen extends StatefulWidget {
   final String chatId;
   const ChatScreen({Key? key, required this.chatId}) : super(key: key);
@@ -38,8 +36,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final otherId = participants.firstWhere((id) => id != currentId);
 
     // 2) Imposta i riferimenti al status
-    final connectionsRef = DatabaseService.instance.ref('status/$otherId/connections');
-    final lastChangedRef = DatabaseService.instance.ref('status/$otherId/last_changed');
+    final connectionsRef = FirebaseDatabase.instance.ref('status/$otherId/connections');
+    final lastChangedRef = FirebaseDatabase.instance.ref('status/$otherId/last_changed');
 
     // 3) Leggi i dati utente
     final userSnap = await FirebaseFirestore.instance
