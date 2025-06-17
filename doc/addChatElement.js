@@ -69,6 +69,7 @@ async function createOrReplaceChat() {
       lastMessage: "",
       lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
       participants: participantIds,
+      deleted: false
     };
     const docRef = await chatsRef.add(chatData);
     console.log(`Nuova chat creata con ID: ${docRef.id}`);

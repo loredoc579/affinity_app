@@ -21,6 +21,27 @@ class FilterManager {
   }) async {
     final filter = context.read<FilterModel>();
 
+    // ← RILEGGO i filtri dal DB **ogni volta** che apro il foglio
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .get();
+    if (doc.exists) {
+      final data = doc.data()!;
+      if (data['filterMinAge'] != null && data['filterMaxAge'] != null) {
+        filter.updateAge(RangeValues(
+          (data['filterMinAge']  as num).toDouble(),
+          (data['filterMaxAge']  as num).toDouble(),
+        ));
+      }
+      if (data['filterMaxDistance'] != null) {
+        filter.updateDistance((data['filterMaxDistance'] as num).toDouble());
+      }
+      if (data['filterGender'] is String) {
+        filter.updateGender(data['filterGender'] as String);
+      }
+    }
+
     showModalBottomSheet(
       context: context,
       builder: (sheetContext) => FilterSheet(
@@ -69,6 +90,9 @@ class FilterManager {
     List<Map<String, dynamic>> allProfiles,
     Position position,
   ) {
+
+    debugPrint('Dispatching LoadProfiles with ${allProfiles.length} profiles');
+
     final filter = context.read<FilterModel>();
     final filtered = allProfiles.where((p) {
       final age = p['age'] is num
@@ -80,14 +104,18 @@ class FilterManager {
       final lat = (p['lastLat'] as num?)?.toDouble();
       final lon = (p['lastLong'] as num?)?.toDouble();
       if (lat == null || lon == null) return false;
+
       final distKm = Geolocator.distanceBetween(
         position.latitude,
         position.longitude,
         lat,
         lon,
       ) / 1000;
+
       return distKm <= filter.maxDistance;
     }).toList();
+
+    debugPrint('Filtered profiles count: ${filtered.length}');
 
     context.read<SwipeBloc>().add(LoadProfiles(filtered));
   }

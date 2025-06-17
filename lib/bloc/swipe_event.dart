@@ -6,11 +6,10 @@ abstract class SwipeEvent extends Equatable {
   @override List<Object?> get props => [];
 }
 
-// ← NUOVO: carica la lista completa
 class LoadProfiles extends SwipeEvent {
-  final List<Map<String, dynamic>> profiles;
-  const LoadProfiles(this.profiles);
-  @override List<Object?> get props => [profiles];
+  final List<Map<String, dynamic>> uiFiltered;
+  const LoadProfiles(this.uiFiltered);
+  @override List<Object?> get props => [uiFiltered];
 }
 
 class SwipeLike extends SwipeEvent {

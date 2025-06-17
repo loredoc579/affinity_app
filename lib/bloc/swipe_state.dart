@@ -8,19 +8,18 @@ abstract class SwipeState extends Equatable {
 
 class SwipeInitial extends SwipeState {}
 
-// Quando caricati o aggiornati, qui dentro c’è la lista dei profili da mostrare
-class SwipeLoadSuccess extends SwipeState {
-  final List<Map<String, dynamic>> profiles;
-  const SwipeLoadSuccess(this.profiles);
-  @override List<Object?> get props => [profiles];
+class ProfilesLoading extends SwipeState {}
+
+/// Lista caricata (già filtrata)
+class ProfilesLoaded extends SwipeState {
+  final List<dynamic> profiles;
+  const ProfilesLoaded(this.profiles);
 }
 
-class SwipeProcessing extends SwipeState {}
-
-class SwipeFailure extends SwipeState {
-  final String error;
-  const SwipeFailure(this.error);
-  @override List<Object?> get props => [error];
+/// Errore nel caricamento
+class ProfilesError extends SwipeState {
+  final String message;
+  const ProfilesError(this.message);
 }
 
 class SwipeMatched extends SwipeState {

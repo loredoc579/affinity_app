@@ -1,6 +1,8 @@
+import 'dart:convert';
+
 import 'package:affinity_app/screens/chat_list_screen.dart';
 import 'package:affinity_app/widgets/heart_progress_indicator.dart';
-import 'package:firebase_database/firebase_database.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 
@@ -12,7 +14,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart' as ph;
 
-import 'bloc/swipe_event.dart';
+import 'repository/swipe_repository.dart';
 import 'screens/home_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/signup_screen.dart';
@@ -35,6 +37,8 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 void _handleMessage(RemoteMessage? msg) {
   final data = msg?.data;
   if (data != null && data['type'] == 'new_chat' && data['chatId'] != null) {
+    debugPrint('🔔 tap sulla notifica BG, contenuto: ${msg?.data}');
+
     navigatorKey.currentState
         ?.pushNamed('/chat', arguments: data['chatId']);
   }
@@ -50,7 +54,7 @@ final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await initializeFirebase();
   // qui puoi loggare o salvare il payload per statistiche
-  print('✅ BG message received: ${message.messageId}');
+  debugPrint('✅ BG message received: ${message.messageId}');
 }
 
 
@@ -81,55 +85,7 @@ void main() async {
 
   // ① Inizializza Firebase Messaging Android Notifications
   if (Platform.isAndroid) {
-      debugPrint('🔄 main(): Initializing Firebase Messaging for Android');
-
-      // Solo Android 13+ richiede esplicitamente la permission
-      var status = await ph.Permission.notification.status;
-      if (status.isDenied) {
-        status = await ph.Permission.notification.request();
-      }
-
-      debugPrint('🔄 Notification permission status: $status');
-
-      const channel = AndroidNotificationChannel(
-        'high_importance_channel', // deve combaciare con il meta-data
-        'Notifiche Importanti',
-        description: 'Canale per notifiche importanti',
-        importance: Importance.high,
-      );
-
-      await flutterLocalNotificationsPlugin
-      .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>()
-      ?.createNotificationChannel(channel);
-
-          // ⑤ Listener foreground
-      FirebaseMessaging.onMessage.listen((RemoteMessage msg) {
-        print('✅ FG message received: ${msg.messageId}');
-
-        flutterLocalNotificationsPlugin.show(
-          msg.notification.hashCode,
-          msg.notification?.title,
-          msg.notification?.body,
-          NotificationDetails(
-            android: AndroidNotificationDetails(
-              channel.id, 
-              channel.name,
-              channelDescription: channel.description,
-              icon: 'ic_notification',      // la tua icona bianca
-              importance: Importance.max,    // ← massima importanza
-              priority: Priority.high,       // ← massima priorità
-              playSound: true,               // ← riproduci suono
-            ),
-          ),
-        );
-      });   
-
-      // ⑥ Listener per tap sulla notifica (background e terminated)
-      FirebaseMessaging.onMessageOpenedApp.listen(_handleMessage);
-      final initialMessage =
-          await FirebaseMessaging.instance.getInitialMessage();
-      _handleMessage(initialMessage); 
+      await initializeFBAndroidNotification(); 
   }
 
   // inizializza la presenza **una sola volta** subito dopo il login
@@ -145,8 +101,11 @@ void main() async {
         BlocProvider<SwipeBloc>(
           create: (_) =>
             // inietta subito l'evento di caricamento
-            SwipeBloc(SwipeService())
-              ..add(LoadProfiles([])), // carica la lista vuota inizialmente
+            SwipeBloc(
+            SwipeRepository(FirebaseFirestore.instance),
+              FirebaseAuth.instance,  
+              SwipeService()
+          ), // carica la lista vuota inizialmente
         ),
         // altri BlocProvider se ti servono...
       ],
@@ -163,6 +122,91 @@ void main() async {
       ),
     ),
   );
+}
+
+Future<void> initializeFBAndroidNotification() async {
+  debugPrint('🔄 main(): Initializing Firebase Messaging for Android');
+  
+  // Solo Android 13+ richiede esplicitamente la permission
+  var status = await ph.Permission.notification.status;
+  if (status.isDenied) {
+    status = await ph.Permission.notification.request();
+  }
+  
+  debugPrint('🔄 Notification permission status: $status');
+  
+  const channel = AndroidNotificationChannel(
+    'high_importance_channel', // deve combaciare con il meta-data
+    'Notifiche Importanti',
+    description: 'Canale per notifiche importanti',
+    importance: Importance.high,
+  );
+  
+  await flutterLocalNotificationsPlugin
+    .resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>()
+    ?.createNotificationChannel(channel);
+  
+  const defaultIcon = 'ic_notification';
+  const androidInitSettings =
+    AndroidInitializationSettings(defaultIcon);
+  
+  final initSettings = InitializationSettings(
+    android: androidInitSettings,
+    // iOS: DarwinInitializationSettings(), 
+    // macOS: DarwinInitializationSettings(),
+  );
+  
+  await flutterLocalNotificationsPlugin.initialize(
+    initSettings,
+    onDidReceiveNotificationResponse: (NotificationResponse resp) {
+      final payload = resp.payload;
+
+      debugPrint('🔔 Notifica FG tap: ${resp.id}, payload: $payload');
+      if (payload == null) return;
+      try {
+        final data = json.decode(payload) as Map<String, dynamic>;
+        if (data['type'] == 'new_chat' && data['chatId'] != null) {
+          navigatorKey.currentState
+              ?.pushNamed('/chat', arguments: data['chatId']);
+        }
+      } catch (e) {
+        debugPrint('❌ Errore decoding payload: $e');
+      }
+    },
+  );
+  
+  // ⑤ Listener foreground
+  FirebaseMessaging.onMessage.listen((RemoteMessage msg) {
+    debugPrint('✅ FG message received: ${msg.messageId}');
+  
+    flutterLocalNotificationsPlugin.show(
+      msg.notification.hashCode,
+      msg.notification?.title,
+      msg.notification?.body,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          channel.id, 
+          channel.name,
+          channelDescription: channel.description,
+          icon: defaultIcon,      // la tua icona bianca
+          importance: Importance.max,    // ← massima importanza
+          priority: Priority.high,       // ← massima priorità
+          playSound: true,               // ← riproduci suono
+        ),
+      ),
+      payload: json.encode({
+        'type':   'new_chat',
+        'chatId': msg.data['chatId'],
+      }),
+    );
+  });   
+  
+  // ⑥ Listener per tap sulla notifica (background e terminated)
+  FirebaseMessaging.onMessageOpenedApp.listen(_handleMessage);
+  final initialMessage =
+      await FirebaseMessaging.instance.getInitialMessage();
+  _handleMessage(initialMessage); 
 }
 
 Future<void> initializeFirebase() async {
