@@ -1,3 +1,5 @@
+// lib/screens/profile_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -9,23 +11,21 @@ import 'dart:typed_data';
 
 import '../services/presence_service.dart';
 import './auth/auth_service.dart';
-
-// Import del HeartProgressIndicator personalizzato
 import '../widgets/heart_progress_indicator.dart';
 
 class ProfileScreen extends StatefulWidget {
+  const ProfileScreen({Key? key}) : super(key: key);
+
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final user = FirebaseAuth.instance.currentUser;
-  final TextEditingController nameController = TextEditingController();
-  final TextEditingController ageController = TextEditingController();
-  final TextEditingController hobbiesController = TextEditingController();
-  final TextEditingController emailController = TextEditingController();
-
-  // Lista di URL per le 9 foto
+  final nameController = TextEditingController();
+  final ageController = TextEditingController();
+  final hobbiesController = TextEditingController();
+  final emailController = TextEditingController();
   List<String?> photoUrls = List<String?>.filled(9, null);
   bool isLoading = true;
 
@@ -43,7 +43,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           .doc(user!.uid)
           .get();
       final data = doc.data();
-      // Recupero foto importata da Facebook se presente
       final fbPhoto = data?['photoUrl'] as String?;
       final urls = data?['photoUrls'] as List<dynamic>?;
       setState(() {
@@ -51,11 +50,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ageController.text = data?['age'] ?? '';
         hobbiesController.text = data?['hobbies'] ?? '';
         emailController.text = data?['email'] ?? user!.email ?? '';
-        // Se ci sono già 9 URL salvati, li uso
         if (urls != null && urls.length >= 9) {
-          photoUrls = urls.map((e) => e as String?).toList();
+          photoUrls = List<String?>.from(urls);
         } else {
-          // Altrimenti inizializzo la lista e, se c'è la foto FB, la metto come principale
           photoUrls = List<String?>.filled(9, null);
           if (fbPhoto != null && fbPhoto.isNotEmpty) {
             photoUrls[0] = fbPhoto;
@@ -63,7 +60,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
         isLoading = false;
       });
-    } catch (e) {
+    } catch (_) {
       setState(() => isLoading = false);
     }
   }
@@ -132,8 +129,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           .collection('users')
           .doc(user!.uid)
           .set({'photoUrls': photoUrls}, SetOptions(merge: true));
-    } catch (e) {
-      // gestisci errori
     } finally {
       setState(() => isLoading = false);
     }
@@ -141,152 +136,132 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Profilo"),
-        leading: BackButton(),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await signOut();
-              debugPrint("Utente disconnesso");
-              await FirebaseAuth.instance.signOut();
-              debugPrint("Firebase disconnesso");
-              PresenceService().goOffline();
-              debugPrint("Presenza disconnessa");
-              if (!mounted) return;
-              Navigator.of(context)
-                  .pushNamedAndRemoveUntil('/login', (route) => false);
+    if (isLoading) {
+      return const Center(child: HeartProgressIndicator());
+    }
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: 9,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 1,
+            ),
+            itemBuilder: (context, index) {
+              final url = photoUrls[index];
+              final bool isMain = index == 0;
+              return Stack(
+                children: [
+                  GestureDetector(
+                    onTap: () => pickImage(index),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        width: double.infinity,
+                        height: double.infinity,
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: isMain
+                                ? Colors.green
+                                : Theme.of(context).primaryColor,
+                            width: isMain ? 3 : 2,
+                          ),
+                          image: url != null
+                              ? DecorationImage(
+                                  image: NetworkImage(url),
+                                  fit: BoxFit.cover,
+                                )
+                              : null,
+                        ),
+                        child: url == null
+                            ? const Center(
+                                child: Icon(
+                                  Icons.add_a_photo,
+                                  size: 36,
+                                  color: Colors.grey,
+                                ),
+                              )
+                            : null,
+                      ),
+                    ),
+                  ),
+                  if (url != null) ...[
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: GestureDetector(
+                        onTap: () => removeImage(index),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            shape: BoxShape.circle,
+                          ),
+                          padding: const EdgeInsets.all(4),
+                          child: const Icon(
+                            Icons.close,
+                            size: 18,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (isMain)
+                      Positioned(
+                        bottom: 4,
+                        left: 0,
+                        right: 0,
+                        child: Container(
+                          alignment: Alignment.center,
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          color: Colors.green.withOpacity(0.7),
+                          child: const Text(
+                            'Principale',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ],
+              );
             },
+          ),
+          const SizedBox(height: 24),
+          TextField(
+            controller: nameController,
+            decoration: const InputDecoration(labelText: "Nome"),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: ageController,
+            decoration: const InputDecoration(labelText: "Età"),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: hobbiesController,
+            decoration: const InputDecoration(labelText: "Passioni"),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: emailController,
+            readOnly: true,
+            decoration: const InputDecoration(labelText: "Email"),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            onPressed: saveProfile,
+            child: const Text("Salva"),
           ),
         ],
       ),
-      body: isLoading
-          ? Center(child: HeartProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: 9,
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      childAspectRatio: 1,
-                    ),
-                    itemBuilder: (context, index) {
-                      final url = photoUrls[index];
-                      final bool isMain = index == 0;
-                      return Stack(
-                        children: [
-                          GestureDetector(
-                            onTap: () => pickImage(index),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Container(
-                                width: double.infinity,
-                                height: double.infinity,
-                                decoration: BoxDecoration(
-                                  border: Border.all(
-                                    color: isMain
-                                        ? Colors.green
-                                        : Theme.of(context).primaryColor,
-                                    width: isMain ? 3 : 2,
-                                  ),
-                                  image: url != null
-                                      ? DecorationImage(
-                                          image: NetworkImage(url),
-                                          fit: BoxFit.cover,
-                                        )
-                                      : null,
-                                ),
-                                child: url == null
-                                    ? const Center(
-                                        child: Icon(
-                                          Icons.add_a_photo,
-                                          size: 36,
-                                          color: Colors.grey,
-                                        ),
-                                      )
-                                    : null,
-                              ),
-                            ),
-                          ),
-                          if (url != null)
-                            Positioned(
-                              top: 4,
-                              right: 4,
-                              child: GestureDetector(
-                                onTap: () => removeImage(index),
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.black54,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  padding: const EdgeInsets.all(4),
-                                  child: const Icon(
-                                    Icons.close,
-                                    size: 18,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          if (isMain)
-                            Positioned(
-                              bottom: 4,
-                              left: 0,
-                              right: 0,
-                              child: Container(
-                                alignment: Alignment.center,
-                                padding: const EdgeInsets.symmetric(vertical: 2),
-                                color: Colors.green.withOpacity(0.7),
-                                child: const Text(
-                                  'Principale',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 24),
-                  TextField(
-                    controller: nameController,
-                    decoration: const InputDecoration(labelText: "Nome"),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: ageController,
-                    decoration: const InputDecoration(labelText: "Età"),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: hobbiesController,
-                    decoration: const InputDecoration(labelText: "Passioni"),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: emailController,
-                    readOnly: true,
-                    decoration: const InputDecoration(labelText: "Email"),
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: saveProfile,
-                    child: const Text("Salva"),
-                  ),
-                ],
-              ),
-            ),
     );
   }
 }

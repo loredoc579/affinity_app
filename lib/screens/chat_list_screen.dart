@@ -12,107 +12,77 @@ class ChatListScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
     final uid = user.uid;
 
-    // 1) Stream di tutte le chat in cui sono partecipante
+    // Stream di tutte le chat in cui sono partecipante
     final chatStream = FirebaseFirestore.instance
         .collection('chats')
         .where('participants', arrayContains: uid)
         .where('deleted', isEqualTo: false)
         .snapshots();
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Le mie chat')),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: chatStream,
-        builder: (ctx, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snap.hasError) {
-            return Center(child: Text('Errore: ${snap.error}'));
-          }
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: chatStream,
+      builder: (ctx, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snap.hasError) {
+          return Center(child: Text('Errore: ${snap.error}'));
+        }
 
-          // 2) Lista di documenti chat
-          final docs = snap.data!.docs;
+        final docs = snap.data!.docs;
+        if (docs.isEmpty) {
+          return const Center(child: Text('Nessuna chat ancora'));
+        }
 
-          if (docs.isEmpty) {
-            return const Center(child: Text('Nessuna chat ancora'));
-          }
+        return ListView.builder(
+          itemCount: docs.length,
+          itemBuilder: (ctx, i) {
+            final chatDoc = docs[i];
+            final data = chatDoc.data();
+            final participants = List<String>.from(
+              data['participants'] as List<dynamic>
+            );
+            final otherUid = participants.firstWhere((id) => id != uid);
+            final lastMessage = data['lastMessage'] as String? ?? '';
 
-          return ListView.builder(
-            itemCount: docs.length,
-            itemBuilder: (ctx, i) {
-              final chatDoc = docs[i];
-              final data = chatDoc.data();
-
-              // 3) Trovo l'altro partecipante
-              final participants =
-                  List<String>.from(data['participants'] as List<dynamic>);
-              final otherUid = participants.firstWhere((id) => id != uid);
-
-              final lastMessage = data['lastMessage'] as String? ?? '';
-
-              return Slidable(
-                key: ValueKey(chatDoc.id),
-                endActionPane: ActionPane(
-                  motion: const DrawerMotion(),
-                  extentRatio: 0.25,
-                  children: [
-                    SlidableAction(
-                      onPressed: (_) =>
-                          _confirmCancel(context, uid, chatDoc.id),
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
-                      icon: Icons.close,
-                      label: 'Annulla',
-                    ),
-                  ],
-                ),
-                child: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                  future: FirebaseFirestore.instance
-                      .collection('users')
-                      .doc(otherUid)
-                      .get(),
-                  builder: (ctx2, userSnap) {
-                    if (userSnap.connectionState ==
-                        ConnectionState.waiting) {
-                      return const ListTile(
-                        title: Text('Caricamento...'),
-                      );
-                    }
-                    if (userSnap.hasError ||
-                        !userSnap.hasData ||
-                        !userSnap.data!.exists) {
-                      return ListTile(
-                        title: const Text('Utente sconosciuto'),
-                        subtitle: Text(lastMessage),
-                        onTap: () => Navigator.pushNamed(
-                          context,
-                          '/chat',
-                          arguments: chatDoc.id,
-                        ),
-                      );
-                    }
-
-                    final udata = userSnap.data!.data()!;
-                    final name = udata['name'] as String? ?? 'Utente';
-                    final photos =
-                        List<String>.from(udata['photoUrls'] as List? ?? []);
-                    final photoUrl =
-                        photos.isNotEmpty ? photos.first : null;
-
+            return Slidable(
+              key: ValueKey(chatDoc.id),
+              endActionPane: ActionPane(
+                motion: const DrawerMotion(),
+                extentRatio: 0.25,
+                children: [
+                  SlidableAction(
+                    onPressed: (_) => _confirmCancel(context, uid, chatDoc.id),
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                    icon: Icons.close,
+                    label: 'Annulla',
+                  ),
+                ],
+              ),
+              child: FutureBuilder<
+                DocumentSnapshot<Map<String, dynamic>>
+              >(
+                future: FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(otherUid)
+                    .get(),
+                builder: (ctx2, userSnap) {
+                  if (userSnap.connectionState ==
+                      ConnectionState.waiting) {
+                    return const ListTile(
+                      title: Text('Caricamento...'),
+                    );
+                  }
+                  if (userSnap.hasError ||
+                      !userSnap.hasData ||
+                      !userSnap.data!.exists) {
                     return ListTile(
-                      leading: photoUrl != null
-                          ? CircleAvatar(
-                              backgroundImage: NetworkImage(photoUrl),
-                            )
-                          : const CircleAvatar(child: Icon(Icons.person)),
-                      title: Text(name),
+                      title: const Text('Utente sconosciuto'),
                       subtitle: Text(lastMessage),
                       onTap: () => Navigator.pushNamed(
                         context,
@@ -120,13 +90,34 @@ class ChatListScreen extends StatelessWidget {
                         arguments: chatDoc.id,
                       ),
                     );
-                  },
-                ),
-              );
-            },
-          );
-        },
-      ),
+                  }
+
+                  final udata = userSnap.data!.data()!;
+                  final name = udata['name'] as String? ?? 'Utente';
+                  final photos =
+                      List<String>.from(udata['photoUrls'] as List? ?? []);
+                  final photoUrl = photos.isNotEmpty ? photos.first : null;
+
+                  return ListTile(
+                    leading: photoUrl != null
+                        ? CircleAvatar(
+                            backgroundImage: NetworkImage(photoUrl),
+                          )
+                        : const CircleAvatar(child: Icon(Icons.person)),
+                    title: Text(name),
+                    subtitle: Text(lastMessage),
+                    onTap: () => Navigator.pushNamed(
+                      context,
+                      '/chat',
+                      arguments: chatDoc.id,
+                    ),
+                  );
+                },
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -136,7 +127,8 @@ class ChatListScreen extends StatelessWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('Annullare il match?'),
         content: const Text(
-            'Sei sicuro di voler annullare il match e rimuovere questa chat?'),
+          'Sei sicuro di voler annullare il match e rimuovere questa chat?'
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
@@ -155,8 +147,9 @@ class ChatListScreen extends StatelessWidget {
   }
 
   Future<void> _cancelMatch(String uid, String chatId) async {
-    final doc = FirebaseFirestore.instance.collection('chats').doc(chatId);
-    // Aggiungo l'uid corrente all'array deletedBy e salvo il timestamp
+    final doc = FirebaseFirestore.instance
+        .collection('chats')
+        .doc(chatId);
     await doc.update({
       'deleted': true,
       'deletedBy': FieldValue.arrayUnion([uid]),

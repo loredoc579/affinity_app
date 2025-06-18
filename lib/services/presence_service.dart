@@ -8,6 +8,33 @@ class PresenceService {
   String? _connId;
   DatabaseReference? _baseRef;
 
+  /// Aggiorna lo stato online/offline, mantenendo traccia del timestamp
+  Future<void> updatePresence({ required bool online }) async {
+    if (_uid == null || _connId == null) return;
+
+    final connRef = _baseRef!
+      .child('connections')
+      .child(_connId!);
+
+    // 1) Configura onDisconnect: se perdi la connessione, imposta subito offline
+    //    (invece di rimuovere il nodo, così non cancello connessioni “ripristinate”)
+    await connRef.onDisconnect().set({
+      'online': false,
+      'last_changed': ServerValue.timestamp,
+    });
+
+    // 2) Imposta lo stato attuale
+    await connRef.set({
+      'online': online,
+      'last_changed': ServerValue.timestamp,
+    });
+
+    // 3) Aggiorna il timestamp globale sotto /status/{uid}/last_changed
+    await _baseRef!
+      .child('last_changed')
+      .set(ServerValue.timestamp);
+  }
+
   /// Call once after the user is authenticated
   Future<void> init() async {
     final user = FirebaseAuth.instance.currentUser;
