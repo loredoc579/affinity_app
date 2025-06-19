@@ -44,7 +44,7 @@ class ProfileDetailScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Città: ${data['lastCity'] ?? ''}',
+                    'Città: ${(data['location'] as Map<String, dynamic>?)?['city'] as String? ?? ''}',
                     style: const TextStyle(fontSize: 16),
                   ),
                   const SizedBox(height: 16),

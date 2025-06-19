@@ -6,6 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:provider/provider.dart';
 
 import '../models/filter_model.dart';
+import '../services/filter_service.dart';
 import '../widgets/filter_sheet.dart';
 import '../bloc/swipe_bloc.dart';
 import '../bloc/swipe_event.dart';
@@ -102,40 +103,28 @@ class FilterManager {
     List<Map<String, dynamic>> allProfiles,
     Position position,
   ) {
-
-    debugPrint('Dispatching LoadProfiles with ${allProfiles.length} profiles');
-
+    // 1) Prendo il filter model
     final filter = Provider.of<FilterModel>(context, listen: false);
 
-    final filtered = allProfiles.where((p) {
-      filter.apply(p, position);
+    debugPrint('Dispatching LoadProfiles with ${allProfiles.length} profiles');
+    debugPrint('Current filter: '
+      'AgeRange: ${filter.ageRange.start}-${filter.ageRange.end}, '
+      'MaxDistance: ${filter.maxDistance}, '
+      'Gender: ${filter.gender}'
+    );
 
-      debugPrint('Current filter: '
-        'AgeRange: ${filter.ageRange.start} - ${filter.ageRange.end}, '
-        'MaxDistance: ${filter.maxDistance}, ');
-
-      final age = p['age'] is num
-          ? (p['age'] as num).toInt()
-          : int.tryParse('${p['age']}') ?? 0;
-      if (age < filter.ageRange.start || age > filter.ageRange.end) return false;
-      final gender = p['gender']?.toString() ?? '';
-      if (filter.gender != 'all' && gender != filter.gender) return false;
-      final lat = (p['lastLat'] as num?)?.toDouble();
-      final lon = (p['lastLong'] as num?)?.toDouble();
-      if (lat == null || lon == null) return false;
-
-      final distKm = Geolocator.distanceBetween(
-        position.latitude,
-        position.longitude,
-        lat,
-        lon,
-      ) / 1000;
-
-      return distKm <= filter.maxDistance;
-    }).toList();
+    // 2) Chiamo il service per filtrare
+    final filtered = FilterService.applyFilters(
+      allProfiles,
+      filter,
+      position,
+    );
 
     debugPrint('Filtered profiles count: ${filtered.length}');
 
-    context.read<SwipeBloc>().add(LoadProfiles(filtered));
+    // 3) Mando l'evento al BLoC
+    context.read<SwipeBloc>().add(
+      LoadProfiles(filtered),
+    );
   }
 }

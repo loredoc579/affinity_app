@@ -28,7 +28,7 @@ class ProfileCardList extends StatelessWidget {
             return _ProfileCard(
               name: data['name'] as String? ?? '—',
               age: data['age'] as String? ?? '—',
-              city: data['lastCity'] as String? ?? '—',
+              city: (data['location'] as Map<String, dynamic>?)?['city'] as String? ?? '—',
               photoUrl: data['photoUrl'] as String?,
               gender: data['gender'] as String? ?? '—',
               hobbies: (data['hobbies'] as String?)?.split(', ') ?? [],

@@ -95,7 +95,7 @@ class SwipeBloc extends Bloc<SwipeEvent, SwipeState> {
       'timestamp': FieldValue.serverTimestamp(),
     });
 
-    debugPrint('Swipe saved: $me → $otherUid (${isSuperlike ? 'superlike' : 'like'})');
+    debugPrint('Swipe (${isSuperlike ? 'superlike' : 'like'}) saved: $me → $otherUid');
 
     // 2) Controllo se esiste uno swipe inverso (match)
     final query = await swipesCol

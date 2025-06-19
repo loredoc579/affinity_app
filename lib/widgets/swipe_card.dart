@@ -29,7 +29,7 @@ class SwipeCard extends StatelessWidget {
         : 'https://via.placeholder.com/300';
     final name = data['name'] as String? ?? 'Sconosciuto';
     final age = data['age'] != null ? '${data['age']}' : '–';
-    final city = data['lastCity'] as String? ?? '';
+    final city = (data['location'] as Map<String, dynamic>?)?['city'] as String? ?? '';
     final titleText = '$name, $age${city.isNotEmpty ? ' • $city' : ''}';
 
     return Padding(

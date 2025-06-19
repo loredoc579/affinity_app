@@ -9,6 +9,7 @@ import '../bloc/swipe_bloc.dart';
 import '../bloc/swipe_event.dart';
 import '../bloc/swipe_state.dart';
 import '../models/filter_model.dart';
+import '../services/filter_service.dart';
 import '../utils/filter_manager.dart';
 import '../widgets/swipe_card.dart';
 import '../widgets/heart_progress_indicator.dart';
@@ -66,10 +67,21 @@ class _HomeContentState extends State<HomeContent>
     // 1) Prendi il FilterModel
     final filter = Provider.of<FilterModel>(context, listen: false);
     // 2) Caricalo da Firestore
-    filter
-      .loadFromFirestore(FirebaseAuth.instance.currentUser!.uid)
+    final uid = FirebaseAuth.instance.currentUser!.uid;
+    FilterService
+      .loadFiltersForUser(filter, uid)
       .then((_) {
-        // 3) Solo dopo aver letto i filtri, dispacho al BLoC
+        // 2) Solo dopo aver popolato il FilterModel, eseguo il dispatch
+        FilterManager.dispatchLoad(
+          context,
+          widget.allProfiles,
+          widget.position,
+        );
+      })
+      .catchError((e) {
+        // opzionale: gestisci errori di lettura
+        debugPrint('Errore loading filters: $e');
+        // in ogni caso procedi col dispatch iniziale
         FilterManager.dispatchLoad(
           context,
           widget.allProfiles,
