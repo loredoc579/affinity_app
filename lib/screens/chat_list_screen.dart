@@ -1,9 +1,9 @@
-// lib/screens/chat_list_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+
+import 'chat_screen.dart'; // ← import della ChatScreen
 
 class ChatListScreen extends StatelessWidget {
   const ChatListScreen({Key? key}) : super(key: key);
@@ -16,11 +16,11 @@ class ChatListScreen extends StatelessWidget {
     }
     final uid = user.uid;
 
-    // Stream di tutte le chat in cui sono partecipante
     final chatStream = FirebaseFirestore.instance
         .collection('chats')
         .where('participants', arrayContains: uid)
         .where('deleted', isEqualTo: false)
+        .orderBy('lastUpdated', descending: true)
         .snapshots();
 
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -43,10 +43,12 @@ class ChatListScreen extends StatelessWidget {
           itemBuilder: (ctx, i) {
             final chatDoc = docs[i];
             final data = chatDoc.data();
-            final participants = List<String>.from(
-              data['participants'] as List<dynamic>
-            );
+
+            // Trovo l'altro partecipante
+            final participants =
+                List<String>.from(data['participants'] as List<dynamic>);
             final otherUid = participants.firstWhere((id) => id != uid);
+
             final lastMessage = data['lastMessage'] as String? ?? '';
 
             return Slidable(
@@ -56,7 +58,8 @@ class ChatListScreen extends StatelessWidget {
                 extentRatio: 0.25,
                 children: [
                   SlidableAction(
-                    onPressed: (_) => _confirmCancel(context, uid, chatDoc.id),
+                    onPressed: (_) =>
+                        _confirmCancel(context, uid, chatDoc.id),
                     backgroundColor: Colors.red,
                     foregroundColor: Colors.white,
                     icon: Icons.close,
@@ -64,53 +67,71 @@ class ChatListScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              child: FutureBuilder<
-                DocumentSnapshot<Map<String, dynamic>>
-              >(
+              child: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
                 future: FirebaseFirestore.instance
                     .collection('users')
                     .doc(otherUid)
                     .get(),
                 builder: (ctx2, userSnap) {
+                  // Loading dello user
                   if (userSnap.connectionState ==
                       ConnectionState.waiting) {
                     return const ListTile(
                       title: Text('Caricamento...'),
                     );
                   }
+                  // Errore o utente non esistente
                   if (userSnap.hasError ||
                       !userSnap.hasData ||
                       !userSnap.data!.exists) {
                     return ListTile(
                       title: const Text('Utente sconosciuto'),
                       subtitle: Text(lastMessage),
-                      onTap: () => Navigator.pushNamed(
-                        context,
-                        '/chat',
-                        arguments: chatDoc.id,
-                      ),
+                      onTap: () {
+                        // Passo solo chatId, ma meglio non entrare qui
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ChatScreen(
+                              chatId: chatDoc.id,
+                              otherUserId: otherUid,
+                              otherUserName: 'Utente',
+                              otherUserPhotoUrl: '',
+                            ),
+                          ),
+                        );
+                      },
                     );
                   }
 
+                  // Dati utente caricati
                   final udata = userSnap.data!.data()!;
                   final name = udata['name'] as String? ?? 'Utente';
                   final photos =
                       List<String>.from(udata['photoUrls'] as List? ?? []);
-                  final photoUrl = photos.isNotEmpty ? photos.first : null;
+                  final photoUrl = photos.isNotEmpty ? photos.first : '';
 
                   return ListTile(
-                    leading: photoUrl != null
+                    leading: photoUrl.isNotEmpty
                         ? CircleAvatar(
                             backgroundImage: NetworkImage(photoUrl),
                           )
                         : const CircleAvatar(child: Icon(Icons.person)),
                     title: Text(name),
                     subtitle: Text(lastMessage),
-                    onTap: () => Navigator.pushNamed(
-                      context,
-                      '/chat',
-                      arguments: chatDoc.id,
-                    ),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ChatScreen(
+                            chatId: chatDoc.id,
+                            otherUserId: otherUid,
+                            otherUserName: name,
+                            otherUserPhotoUrl: photoUrl,
+                          ),
+                        ),
+                      );
+                    },
                   );
                 },
               ),
@@ -127,8 +148,7 @@ class ChatListScreen extends StatelessWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('Annullare il match?'),
         content: const Text(
-          'Sei sicuro di voler annullare il match e rimuovere questa chat?'
-        ),
+            'Sei sicuro di voler annullare il match e rimuovere questa chat?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
@@ -147,9 +167,7 @@ class ChatListScreen extends StatelessWidget {
   }
 
   Future<void> _cancelMatch(String uid, String chatId) async {
-    final doc = FirebaseFirestore.instance
-        .collection('chats')
-        .doc(chatId);
+    final doc = FirebaseFirestore.instance.collection('chats').doc(chatId);
     await doc.update({
       'deleted': true,
       'deletedBy': FieldValue.arrayUnion([uid]),

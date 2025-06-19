@@ -1,11 +1,14 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:provider/provider.dart';
 
 import '../bloc/swipe_bloc.dart';
 import '../bloc/swipe_event.dart';
 import '../bloc/swipe_state.dart';
+import '../models/filter_model.dart';
 import '../utils/filter_manager.dart';
 import '../widgets/swipe_card.dart';
 import '../widgets/heart_progress_indicator.dart';
@@ -46,23 +49,33 @@ class _HomeContentState extends State<HomeContent>
   bool _isSuperlikeInProgress = false;
   bool _canSwipe = true;
 
+  /// Fa partire uno swipe da bottone, disabilitando input successivi per 300ms
   void _trySwipe(CardSwiperDirection dir) {
     if (!_canSwipe) return;
     _canSwipe = false;
+    _controller.swipe(dir);              // prima innesca la swipe
     Future.delayed(const Duration(milliseconds: 300), () {
-      if (mounted) _canSwipe = true;
+      if (mounted) _canSwipe = true;     // poi riabilita dopo 300 ms
     });
-    _controller.swipe(dir);
   }
 
   @override
   void initState() {
     super.initState();
-    FilterManager.dispatchLoad(
-      context,
-      widget.allProfiles,
-      widget.position,
-    );
+
+    // 1) Prendi il FilterModel
+    final filter = Provider.of<FilterModel>(context, listen: false);
+    // 2) Caricalo da Firestore
+    filter
+      .loadFromFirestore(FirebaseAuth.instance.currentUser!.uid)
+      .then((_) {
+        // 3) Solo dopo aver letto i filtri, dispacho al BLoC
+        FilterManager.dispatchLoad(
+          context,
+          widget.allProfiles,
+          widget.position,
+        );
+      });
 
     _rippleController = AnimationController(
       vsync: this,
@@ -118,17 +131,10 @@ class _HomeContentState extends State<HomeContent>
               left: true, right: true
             ),
             onSwipe: (prev, curr, dir) {
-              if (!_canSwipe) return false;
-              _canSwipe = false;
-              Future.delayed(const Duration(milliseconds: 300), () {
-                if (mounted) _canSwipe = true;
-              });
-
               final otherUid = list[prev]['uid'] as String;
+
               if (_isSuperlikeInProgress) {
-                context.read<SwipeBloc>().add(
-                  SwipeSuperlike(otherUid),
-                );
+                context.read<SwipeBloc>().add(SwipeSuperlike(otherUid));
                 _isSuperlikeInProgress = false;
               } else if (dir == CardSwiperDirection.left) {
                 context.read<SwipeBloc>().add(SwipeNope(otherUid));
@@ -136,7 +142,13 @@ class _HomeContentState extends State<HomeContent>
                 context.read<SwipeBloc>().add(SwipeLike(otherUid));
               }
 
-              if (curr != null) setState(() => _currentIndex = curr);
+              if (curr != null) {
+                setState(() {
+                  _currentIndex = curr;
+                });
+              }
+
+              // Ritorna true per far effettivamente uscire la carta
               return dir == CardSwiperDirection.left
                   || dir == CardSwiperDirection.right
                   || dir == CardSwiperDirection.top;

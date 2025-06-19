@@ -241,9 +241,17 @@ class AffinityApp extends StatelessWidget {
         '/login': (context) => LoginScreen(),
         '/home': (context) => HomeScreen(),
         '/profile': (context) => ProfileScreen(),
-        '/chat': (context) => ChatScreen(
-            chatId:
-                ModalRoute.of(context)!.settings.arguments as String),
+        '/chat': (context) {
+          // Estrae la mappa di argomenti passati
+          final args = ModalRoute.of(context)!.settings.arguments
+              as Map<String, dynamic>;
+          return ChatScreen(
+            chatId: args['chatId'] as String,
+            otherUserId: args['otherUserId'] as String,
+            otherUserName: args['otherUserName'] as String,
+            otherUserPhotoUrl: args['otherUserPhotoUrl'] as String,
+          );
+        },
         '/chats': (_) => ChatListScreen(),
       },
       // 👇 Questo StreamBuilder è ciò che rileva login/logout in tempo reale

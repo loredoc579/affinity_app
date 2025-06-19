@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:provider/provider.dart';
 
 import '../models/filter_model.dart';
 import '../widgets/filter_sheet.dart';
@@ -23,22 +24,31 @@ class FilterManager {
 
     // ← RILEGGO i filtri dal DB **ogni volta** che apro il foglio
     final doc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .get();
-    if (doc.exists) {
+      .collection('users')
+      .doc(user.uid)
+      .collection('filters')    // nuova sotto‐collezione
+      .doc('settings')          // documento “settings”
+      .get();
+
+    if (doc.exists && doc.data() != null) {
       final data = doc.data()!;
-      if (data['filterMinAge'] != null && data['filterMaxAge'] != null) {
+
+      // Età
+      if (data['minAge']  != null && data['maxAge'] != null) {
         filter.updateAge(RangeValues(
-          (data['filterMinAge']  as num).toDouble(),
-          (data['filterMaxAge']  as num).toDouble(),
+          (data['minAge']  as num).toDouble(),
+          (data['maxAge']  as num).toDouble(),
         ));
       }
-      if (data['filterMaxDistance'] != null) {
-        filter.updateDistance((data['filterMaxDistance'] as num).toDouble());
+
+      // Distanza
+      if (data['maxDistance'] != null) {
+        filter.updateDistance((data['maxDistance'] as num).toDouble());
       }
-      if (data['filterGender'] is String) {
-        filter.updateGender(data['filterGender'] as String);
+
+      // Genere
+      if (data['gender'] is String) {
+        filter.updateGender(data['gender'] as String);
       }
     }
 
@@ -63,14 +73,16 @@ class FilterManager {
         onApply: () async {
           // Salva filtri su Firestore
           await FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .update({
-            'filterMinAge': filter.ageRange.start.toInt(),
-            'filterMaxAge': filter.ageRange.end.toInt(),
-            'filterMaxDistance': filter.maxDistance,
-            'filterGender': filter.gender,
-          });
+            .collection('users')
+            .doc(user.uid)
+            .collection('filters')          // sotto‐collezione “filters”
+            .doc('settings')                // documento “settings”
+            .set({
+              'minAge':       filter.ageRange.start.toInt(),
+              'maxAge':       filter.ageRange.end.toInt(),
+              'maxDistance':  filter.maxDistance,
+              'gender':       filter.gender,
+            }, SetOptions(merge: true));     // merge per non sovrascrivere altri campi
 
           // Reset stato swiper nel widget chiamante
           onResetSwiper();
@@ -93,8 +105,15 @@ class FilterManager {
 
     debugPrint('Dispatching LoadProfiles with ${allProfiles.length} profiles');
 
-    final filter = context.read<FilterModel>();
+    final filter = Provider.of<FilterModel>(context, listen: false);
+
     final filtered = allProfiles.where((p) {
+      filter.apply(p, position);
+
+      debugPrint('Current filter: '
+        'AgeRange: ${filter.ageRange.start} - ${filter.ageRange.end}, '
+        'MaxDistance: ${filter.maxDistance}, ');
+
       final age = p['age'] is num
           ? (p['age'] as num).toInt()
           : int.tryParse('${p['age']}') ?? 0;

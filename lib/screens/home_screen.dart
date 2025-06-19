@@ -169,9 +169,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           body: IndexedStack(index: _navIndex, children: pages),
           bottomNavigationBar: BottomNavigationBar(
             currentIndex: _navIndex,
+            showSelectedLabels: false,
+            showUnselectedLabels: false,
             onTap: _onNavTap,
             items: const [
-              BottomNavigationBarItem(icon: Icon(Icons.home),   label: 'Home'),
+              BottomNavigationBarItem(icon: Icon(Icons.view_carousel), label: 'Home'),
               BottomNavigationBarItem(icon: Icon(Icons.chat),   label: 'Chat'),
               BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profilo'),
             ],
