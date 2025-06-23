@@ -156,8 +156,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               onShowFilters: () => _showFilters(data.allProfiles, data.position),
               onNavTap: _onNavTap,
               navIndex: _navIndex,
-              isEnd: _isEnd,
-              onEndReached: () => setState(() => _isEnd = true),
             ),
           ),
           const ChatListScreen(),

@@ -1,6 +1,7 @@
 // lib/repository/swipe_repository.dart
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
 
 class SwipeRepository {
   final FirebaseFirestore _firestore;
@@ -61,6 +62,7 @@ class SwipeRepository {
 
   /// Carica tutti gli utenti da /users, includendo l'uid in ogni Map
   Future<List<Map<String, dynamic>>> _fetchAllUsers() async {
+    debugPrint('Fetching all users from Firestore');
     final snap = await _firestore.collection('users').get();
     return snap.docs
       .map((d) => {
@@ -80,16 +82,23 @@ class SwipeRepository {
     required String uid,
     List<Map<String, dynamic>>? uiList,
   }) async {
+
     // 1) calcolo gli ID da escludere
     final excluded = await _computeExcludedIds(uid);
 
     // 2) lista di partenza: tutta (se uiList null) o quella filtrata in UI
     final baseList = uiList ?? await _fetchAllUsers();
 
+    debugPrint('Base list size: ${baseList.length}, Excluded count: ${excluded.length}');
+
     // 3) ritorno solo gli utenti non esclusi
-    return baseList.where((user) {
+    var finalList = baseList.where((user) {
       final otherId = user['uid'] as String;
       return !excluded.contains(otherId);
     }).toList();
+
+    debugPrint('Final list size after exclusions: ${finalList.length}');
+
+    return finalList;
   }
 }

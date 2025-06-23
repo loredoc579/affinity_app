@@ -53,8 +53,12 @@ class SwipeBloc extends Bloc<SwipeEvent, SwipeState> {
       // 1) prendo i profili già filtrati in UI
       final baseList = event.uiFiltered;
 
+      debugPrint('Caricamento profili per l\'utente: $me, baseList size: ${baseList.length}');
+
       // 2) applico i filtri “logici” sul baseList (blacklist, swipe oggi, match)
       final filteredByLogic = await _repo.fetchProfiles(uid: me, uiList : baseList);
+
+      debugPrint('Profili filtrati per logica: ${filteredByLogic.length}');
 
       emit(ProfilesLoaded(filteredByLogic));
     } catch (e) {
