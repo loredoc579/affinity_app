@@ -2,16 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
 import 'package:geolocator/geolocator.dart';
-import 'dart:convert';
 
 import '../bloc/swipe_bloc.dart';
 import '../bloc/swipe_event.dart';
 import '../bloc/swipe_state.dart';
+import '../models/user_model.dart'; // Import fondamentale
 import '../widgets/swipe_card.dart';
 import '../widgets/heart_progress_indicator.dart';
 import '../widgets/ripple_avatar.dart';
 
-/// Direzioni interne per l’overlay
 enum SwipeOverlayDir { none, left, superlike, right }
 
 class HomeContent extends StatefulWidget {
@@ -34,8 +33,7 @@ class HomeContent extends StatefulWidget {
   State<HomeContent> createState() => _HomeContentState();
 }
 
-class _HomeContentState extends State<HomeContent>
-    with SingleTickerProviderStateMixin {
+class _HomeContentState extends State<HomeContent> with SingleTickerProviderStateMixin {
   final _controller = CardSwiperController();
   final _swiperKey = UniqueKey();
   late final AnimationController _rippleController;
@@ -49,7 +47,6 @@ class _HomeContentState extends State<HomeContent>
   @override
   void initState() {
     super.initState();
-    // Inizializza solo il ripple animation
     _rippleController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 4),
@@ -83,48 +80,45 @@ class _HomeContentState extends State<HomeContent>
 
   SwipeDir _mapToSwipeDir(SwipeOverlayDir dir) {
     switch (dir) {
-      case SwipeOverlayDir.left:
-        return SwipeDir.left;
-      case SwipeOverlayDir.right:
-        return SwipeDir.right;
-      default:
-        return SwipeDir.none;
+      case SwipeOverlayDir.left: return SwipeDir.left;
+      case SwipeOverlayDir.right: return SwipeDir.right;
+      default: return SwipeDir.none;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<SwipeBloc, SwipeState>(
+    return BlocConsumer<SwipeBloc, SwipeState>(
+      listener: (context, state) {
+        if (state is SwipeMatched) {
+          showDialog(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Text('È match! 🎉'),
+              content: const Text('Puoi iniziare a chattare.'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
+      },
       builder: (context, state) {
-        if (state is SwipeInitial || state is ProfilesLoading) {
+        if (state is SwipeInitial || state is SwipeLoading) {
           return const Center(child: HeartProgressIndicator(size: 60));
         }
-        if (state is ProfilesError) {
+        if (state is SwipeError) {
           return Center(child: Text('Errore: ${state.message}'));
         }
-        if (state is SwipeMatched) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            showDialog(
-              context: context,
-              builder: (_) => AlertDialog(
-                title: const Text('È match! 🎉'),
-                content: const Text('Puoi iniziare a chattare.'),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('OK'),
-                  ),
-                ],
-              ),
-            );
-          });
-        }
-        if (state is ProfilesLoaded) {
-          final jsonSafe = jsonDecode(jsonEncode(state.profiles));
-          final List<Map<String, dynamic>> list =
-              (jsonSafe as List).cast<Map<String, dynamic>>();
+        
+        // MODIFICA: Usiamo SwipeLoaded e la lista di UserModel
+        if (state is SwipeLoaded) {
+          final List<UserModel> users = state.users;
 
-          if (list.isEmpty || _currentIndex >= list.length) {
+          if (users.isEmpty || _currentIndex >= users.length) {
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -144,27 +138,27 @@ class _HomeContentState extends State<HomeContent>
             );
           }
 
-          // Precache delle prime due immagini
-          final remaining = list.length - _currentIndex;
+          // Precache immagini (usando properties dell'oggetto user)
+          final remaining = users.length - _currentIndex;
           final displayed = remaining.clamp(1, 2);
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            for (var p in list.take(displayed)) {
-              precacheImage(NetworkImage(p['photoUrls'][0]), context);
-            }
-          });
+          
+          if (users[_currentIndex].imageUrls.isNotEmpty) {
+             WidgetsBinding.instance.addPostFrameCallback((_) {
+               precacheImage(NetworkImage(users[_currentIndex].imageUrls.first), context);
+             });
+          }
 
           return CardSwiper(
             key: _swiperKey,
             controller: _controller,
-            cardsCount: list.length,
+            cardsCount: users.length,
             numberOfCardsDisplayed: displayed,
             scale: 0.8,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
             threshold: 50,
             maxAngle: 20,
             duration: const Duration(milliseconds: 200),
-            allowedSwipeDirection:
-                AllowedSwipeDirection.only(left: true, right: true),
+            allowedSwipeDirection: const AllowedSwipeDirection.only(left: true, right: true),
             onSwipeDirectionChange: (hDir, vDir) {
               if (hDir == CardSwiperDirection.left) {
                 _triggerOverlay(SwipeOverlayDir.left);
@@ -175,29 +169,31 @@ class _HomeContentState extends State<HomeContent>
               }
             },
             onSwipe: (prev, curr, dir) {
-              final otherUid = list[prev]['uid'] as String;
+              // MODIFICA: Accesso sicuro tramite UserModel
+              final otherUid = users[prev].id;
               _resetOverlay();
+              
               if (dir == CardSwiperDirection.left) {
                 context.read<SwipeBloc>().add(SwipeNope(otherUid));
               } else if (dir == CardSwiperDirection.right) {
                 context.read<SwipeBloc>().add(SwipeLike(otherUid));
               }
+              
               if (curr != null) setState(() => _currentIndex = curr);
               return true;
             },
             cardBuilder: (ctx, i, _, __) {
-              final data = list[i];
+              final user = users[i];
               final isTop = i == _currentIndex;
+              
+              // MODIFICA: Passiamo l'oggetto User alla card
               return SwipeCard(
-                data: data,
+                user: user, // <--- Importante: dovremo aggiornare SwipeCard
                 showOverlay: _showOverlay && isTop,
                 overlayDir: _mapToSwipeDir(_overlayDir),
-                onNope: () =>
-                    _swipe(CardSwiperDirection.left, SwipeOverlayDir.left),
-                onLike: () =>
-                    _swipe(CardSwiperDirection.right, SwipeOverlayDir.right),
-                onSuperlike: () =>
-                    _swipe(CardSwiperDirection.top, SwipeOverlayDir.superlike),
+                onNope: () => _swipe(CardSwiperDirection.left, SwipeOverlayDir.left),
+                onLike: () => _swipe(CardSwiperDirection.right, SwipeOverlayDir.right),
+                onSuperlike: () => _swipe(CardSwiperDirection.top, SwipeOverlayDir.superlike),
               );
             },
           );

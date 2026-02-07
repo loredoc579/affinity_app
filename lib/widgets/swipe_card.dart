@@ -4,13 +4,16 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../models/user_model.dart'; // <--- NUOVO IMPORT
 import '../screens/profile_detail_screen.dart';
 
 /// Direzioni per l'overlay/bottoni
 enum SwipeDir { none, left, superlike, right }
 
 class SwipeCard extends StatelessWidget {
-  final Map<String, dynamic> data;
+  // MODIFICA 1: Usiamo UserModel invece di Map
+  final UserModel user;
+  
   final VoidCallback? onLike;
   final VoidCallback? onNope;
   final VoidCallback? onSuperlike;
@@ -23,7 +26,7 @@ class SwipeCard extends StatelessWidget {
 
   const SwipeCard({
     super.key,
-    required this.data,
+    required this.user, // <--- Costruttore aggiornato
     this.onLike,
     this.onNope,
     this.onSuperlike,
@@ -35,20 +38,65 @@ class SwipeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final mediaSize = MediaQuery.of(context).size;
     final cardHeight = mediaSize.height * 0.85;
-    final fontSize = min(max(mediaSize.width * 0.05, 16.0), 20.0);
+    
+    // Fix per l'errore min/max su double
+    final fontSize = (mediaSize.width * 0.05).clamp(16.0, 20.0);
 
-    final photoList = data['photoUrls'] as List<dynamic>? ?? [];
-    final photoUrl = photoList.isNotEmpty
-        ? photoList.first as String
+    // MODIFICA 2: Estrazione dati sicura dal Modello
+    final photoUrl = user.imageUrls.isNotEmpty
+        ? user.imageUrls.first
         : 'https://via.placeholder.com/300';
-    final name = data['name'] as String? ?? 'Sconosciuto';
-    final age = data['age'] != null ? '${data['age']}' : '–';
-    final city =
-        (data['location'] as Map<String, dynamic>?)?['city'] as String? ?? '';
-    final titleText = '$name, $age${city.isNotEmpty ? ' • $city' : ''}';
+    
+    final name = user.name.isNotEmpty ? user.name : 'Sconosciuto';
+    final age = user.age > 0 ? '${user.age}' : '–';
+    
+    // Gestione sicura della location (se esiste nel modello)
+    String city = '';
+    if (user.location != null && user.location!['city'] != null) {
+      city = ' • ${user.location!['city']}';
+    }
+    
+    final titleText = '$name, $age$city';
 
     // helper per stato attivo pulsante
-    bool _isActive(SwipeDir dir) => showOverlay && overlayDir == dir;
+    bool isActive(SwipeDir dir) => showOverlay && overlayDir == dir;
+
+    // Helper per costruire i pulsanti (spostato qui per pulizia o mantenuto come metodo)
+    Widget buildActionButton({
+      required IconData icon,
+      required Color baseColor,
+      required bool active,
+      VoidCallback? onPressed,
+    }) {
+      return AnimatedOpacity(
+        duration: const Duration(milliseconds: 150),
+        opacity: active || !showOverlay ? 1.0 : 0.0,
+        child: AnimatedScale(
+          duration: const Duration(milliseconds: 200),
+          scale: active ? 1.6 : 1.0,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: active ? baseColor : Colors.white.withOpacity(0.9),
+              boxShadow: const [
+                BoxShadow(color: Colors.black26, blurRadius: 4),
+              ],
+            ),
+            child: IconButton(
+              icon: Icon(
+                icon,
+                color: active ? Colors.white : baseColor,
+                size: 28,
+              ),
+              onPressed: onPressed,
+            ),
+          ),
+        ),
+      );
+    }
 
     return Padding(
       padding: const EdgeInsets.all(8.0),
@@ -116,26 +164,26 @@ class SwipeCard extends StatelessWidget {
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: [
                               // NOPE
-                              _buildActionButton(
+                              buildActionButton(
                                 icon: Icons.clear,
                                 baseColor: Colors.red,
-                                active: _isActive(SwipeDir.left),
+                                active: isActive(SwipeDir.left),
                                 onPressed: onNope,
                               ),
 
                               // SUPERLIKE
-                              _buildActionButton(
+                              buildActionButton(
                                 icon: Icons.flash_on,
                                 baseColor: Colors.blue,
-                                active: _isActive(SwipeDir.superlike),
+                                active: isActive(SwipeDir.superlike),
                                 onPressed: onSuperlike,
                               ),
 
                               // LIKE
-                              _buildActionButton(
+                              buildActionButton(
                                 icon: Icons.favorite,
                                 baseColor: Colors.green,
-                                active: _isActive(SwipeDir.right),
+                                active: isActive(SwipeDir.right),
                                 onPressed: onLike,
                               ),
                             ],
@@ -145,7 +193,7 @@ class SwipeCard extends StatelessWidget {
                         // ===== label diagonale =====
                         if (showOverlay && overlayDir != SwipeDir.none)
                           overlayDir == SwipeDir.superlike
-                          // --- SUPER LIKE: centrata orizzontalmente ---
+                          // --- SUPER LIKE ---
                           ? Positioned(
                               top: 16,
                               left: 0,
@@ -165,13 +213,13 @@ class SwipeCard extends StatelessWidget {
                                       fontSize: 28,
                                       fontWeight: FontWeight.bold,
                                       color: Colors.blue,
-                                      fontFamily: 'PermanentMarker',
+                                      // fontFamily: 'PermanentMarker', // Riattiva se hai il font
                                     ),
                                   ),
                                 ),
                               ),
                             )
-                          // --- NOPE / LIKE: diagonale ai lati ---
+                          // --- NOPE / LIKE ---
                           : Positioned(
                             top: 16,
                             left: overlayDir == SwipeDir.left ? 16 : null,
@@ -211,7 +259,7 @@ class SwipeCard extends StatelessWidget {
                                         : overlayDir == SwipeDir.right
                                             ? Colors.green
                                             : Colors.blue,
-                                    fontFamily: 'PermanentMarker',
+                                    // fontFamily: 'PermanentMarker', // Riattiva se hai il font
                                   ),
                                 ),
                               ),
@@ -227,7 +275,11 @@ class SwipeCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        ProfileDetailScreen(data: data),
+                        // MODIFICA 3: Adattamento per ProfileDetailScreen
+                        // Se ProfileDetailScreen accetta ancora Map, usiamo toMap().
+                        // Se l'hai aggiornato per accettare UserModel, passa 'user: user'.
+                        // Qui assumo che il widget vecchio voglia ancora 'data'.
+                        ProfileDetailScreen(data: user.toMap()), 
                         const SizedBox(height: 16.0),
                       ],
                     ),
@@ -235,43 +287,6 @@ class SwipeCard extends StatelessWidget {
                 ],
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ===== widget pulsante =====
-  Widget _buildActionButton({
-    required IconData icon,
-    required Color baseColor,
-    required bool active,
-    VoidCallback? onPressed,
-  }) {
-    return AnimatedOpacity(
-      duration: const Duration(milliseconds: 150),
-      opacity: active || !showOverlay ? 1.0 : 0.0,
-      child: AnimatedScale(
-        duration: const Duration(milliseconds: 200),
-        scale: active ? 1.6 : 1.0,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          width: 60,
-          height: 60,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: active ? baseColor : Colors.white.withOpacity(0.9),
-            boxShadow: const [
-              BoxShadow(color: Colors.black26, blurRadius: 4),
-            ],
-          ),
-          child: IconButton(
-            icon: Icon(
-              icon,
-              color: active ? Colors.white : baseColor,
-              size: 28,
-            ),
-            onPressed: onPressed,
           ),
         ),
       ),

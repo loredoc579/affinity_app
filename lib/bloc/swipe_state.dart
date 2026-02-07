@@ -1,32 +1,38 @@
-// swipe_state.dart
 import 'package:equatable/equatable.dart';
+import '../models/user_model.dart'; // Importante!
 
 abstract class SwipeState extends Equatable {
   const SwipeState();
-  @override List<Object?> get props => [];
+  @override
+  List<Object?> get props => [];
 }
 
 class SwipeInitial extends SwipeState {}
 
-class ProfilesLoading extends SwipeState {}
-class ProfilesRefreshing extends SwipeState {}
+class SwipeLoading extends SwipeState {}
 
-// Stato che indica che siamo offline e non possiamo caricare profili
-class ProfilesOffline extends SwipeState {}
+class SwipeLoaded extends SwipeState {
+  final List<UserModel> users; // Ora usiamo UserModel!
 
-/// Lista caricata (già filtrata)
-class ProfilesLoaded extends SwipeState {
-  final List<dynamic> profiles;
-  const ProfilesLoaded(this.profiles);
+  const SwipeLoaded({required this.users});
+
+  @override
+  List<Object?> get props => [users];
 }
 
-/// Errore nel caricamento
-class ProfilesError extends SwipeState {
+class SwipeError extends SwipeState {
   final String message;
-  const ProfilesError(this.message);
+  const SwipeError(this.message);
+  @override
+  List<Object?> get props => [message];
 }
 
 class SwipeMatched extends SwipeState {
-  final String otherUid;
-  const SwipeMatched(this.otherUid);
+  final String matchId;     // ID dell'utente con cui hai fatto match
+  final String chatRoomId;  // ID della chat creata
+
+  const SwipeMatched({required this.matchId, required this.chatRoomId});
+  
+  @override
+  List<Object?> get props => [matchId, chatRoomId];
 }
