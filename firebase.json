@@ -1,72 +1,28 @@
 {
-  "hosting": [
-    {
-      "target": "prod",
-      "public": "build/web",
-      "ignore": [
-        "firebase.json",
-        "**/.*",
-        "**/node_modules/**"
-      ],
-      "rewrites": [
-        {
-          "source": "**",
-          "destination": "/index.html"
-        }
-      ]
+  "emulators": {
+    "functions": {
+      "port": 5001
     },
-    {
-      "target": "dev",
-      "public": "build/web",
-      "ignore": [
-        "firebase.json",
-        "**/.*",
-        "**/node_modules/**"
-      ],
-      "rewrites": [
-        {
-          "source": "/main.dart.js.map",
-          "destination": "/main.dart.js.map"
-        },
-        {
-          "source": "/flutter_service_worker.js.map",
-          "destination": "/flutter_service_worker.js.map"
-        },
-        {
-          "source": "/AssetManifest.json.map",
-          "destination": "/AssetManifest.json.map"
-        },
-        {
-          "source": "/FontManifest.json.map",
-          "destination": "/FontManifest.json.map"
-        },
-        {
-          "source": "/flutter_service_worker.js",
-          "destination": "/flutter_service_worker.js"
-        },
-        {
-          "source": "/AssetManifest.json",
-          "destination": "/AssetManifest.json"
-        },
-        {
-          "source": "/FontManifest.json",
-          "destination": "/FontManifest.json"
-        },
-        {
-          "source": "/version.json",
-          "destination": "/version.json"
-        },
-        {
-          "source": "**",
-          "destination": "/index.html"
-        }
-      ]
+    "firestore": {
+      "port": 8080
+    },
+    "ui": {
+      "enabled": true,
+      "port": 4000
     }
-  ],
+  },
+  "hosting": {
+    "public": "public",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
+  },
   "functions": [
     {
-      "source": "functions",
-      "codebase": "default",
+      "source": "functions/ts_functions",
+      "codebase": "ts_functions",
       "ignore": [
         "node_modules",
         ".git",
@@ -75,7 +31,8 @@
         "*.local"
       ],
       "predeploy": [
-        "npm --prefix \"$RESOURCE_DIR\" run lint"
+        "npm --prefix \"$RESOURCE_DIR\" run lint",
+        "npm --prefix \"$RESOURCE_DIR\" run build"
       ]
     }
   ]

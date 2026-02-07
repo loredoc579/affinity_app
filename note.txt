@@ -5,6 +5,13 @@ flutter clean
 flutter pub get
 flutter run -d web-server --web-hostname localhost --web-port 5678
 
+#quando si vogliono utilizzare emulatori
+firebase emulators:start
+flutter run -d chrome --dart-define=USE_EMULATORS=true
+flutter run -d web-server --dart-define=USE_EMULATORS=true
+
+
+
 cd C:\inetpub\affinity_app            # assicurati di essere nella root del progetto
 flutter pub outdated                  # vedi quali pacchetti puoi aggiornare
 # (modifica pubspec.yaml se vuoi cambiare versioni)
@@ -44,6 +51,7 @@ npm install
 cd ..
 --se non ci sono modifiche o dipendenze versioni di Node diverse direttamente:
 firebase deploy --only functions:onChatCreated
+firebase deploy --only functions:ts_functions:getProfiles
 
 utente prova id : wj9anhaw4cdj0fI1EHVCtqFat8Q2
 utente fb id: HqbyzepkLwO4mZBw2nvQQFghuTj2

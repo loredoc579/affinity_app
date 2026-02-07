@@ -6,10 +6,20 @@ abstract class SwipeEvent extends Equatable {
   @override List<Object?> get props => [];
 }
 
+/// Event per caricare la “pagina” di profili:
+/// - uiFilters: mappa di filtri lato UI (es. gender, ageFrom…)
+/// - cursor: cursore per paginazione (l’ultimo uid restituito)
+/// - pageSize: quanti profili richiedere per volta
 class LoadProfiles extends SwipeEvent {
-  final List<Map<String, dynamic>> uiFiltered;
-  const LoadProfiles(this.uiFiltered);
-  @override List<Object?> get props => [uiFiltered];
+  final Map<String, dynamic>? uiFilters;
+  final String? cursor;
+  final int pageSize;
+
+  const LoadProfiles({
+    this.uiFilters,
+    this.cursor,
+    this.pageSize = 30,
+  });
 }
 
 class SwipeLike extends SwipeEvent {

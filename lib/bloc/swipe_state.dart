@@ -9,6 +9,10 @@ abstract class SwipeState extends Equatable {
 class SwipeInitial extends SwipeState {}
 
 class ProfilesLoading extends SwipeState {}
+class ProfilesRefreshing extends SwipeState {}
+
+// Stato che indica che siamo offline e non possiamo caricare profili
+class ProfilesOffline extends SwipeState {}
 
 /// Lista caricata (già filtrata)
 class ProfilesLoaded extends SwipeState {

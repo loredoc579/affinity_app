@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Manages presence by tracking a persistent connection ID per device.
@@ -16,23 +17,28 @@ class PresenceService {
       .child('connections')
       .child(_connId!);
 
-    // 1) Configura onDisconnect: se perdi la connessione, imposta subito offline
-    //    (invece di rimuovere il nodo, così non cancello connessioni “ripristinate”)
-    await connRef.onDisconnect().set({
-      'online': false,
-      'last_changed': ServerValue.timestamp,
-    });
-
-    // 2) Imposta lo stato attuale
-    await connRef.set({
-      'online': online,
-      'last_changed': ServerValue.timestamp,
-    });
-
-    // 3) Aggiorna il timestamp globale sotto /status/{uid}/last_changed
-    await _baseRef!
-      .child('last_changed')
-      .set(ServerValue.timestamp);
+    try {
+      // 1) Configura onDisconnect
+      await connRef.onDisconnect().set({
+        'online': false,
+        'last_changed': ServerValue.timestamp,
+      });
+      // 2) Imposta lo stato attuale
+      await connRef.set({
+        'online': online,
+        'last_changed': ServerValue.timestamp,
+      });
+      // 3) Aggiorna il timestamp globale
+      await _baseRef!
+        .child('last_changed')
+        .set(ServerValue.timestamp);
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        debugPrint('⚠️ PresenceService.updatePresence: permessi negati su $connRef');
+      } else {
+        rethrow;
+      }
+    }
   }
 
   /// Call once after the user is authenticated
@@ -55,26 +61,42 @@ class PresenceService {
     }
 
     final connRef = connectionsRef.child(_connId!);
-    // Ensure removal of this device node on disconnect
-    connRef.onDisconnect().remove();
-    // Mark this client as online
-    await connRef.set(true);
-
-    // Update last_changed timestamp
-    await _baseRef!.child('last_changed').set(ServerValue.timestamp);
+    try {
+      // Ensure removal of this device node on disconnect
+      await connRef.onDisconnect().remove();
+      // Mark this client as online
+      await connRef.set(true);
+      // Update last_changed timestamp
+      await _baseRef!.child('last_changed').set(ServerValue.timestamp);
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        debugPrint('⚠️ PresenceService.init: permessi negati su $connRef');
+      } else {
+        rethrow;
+      }
+    }
   }
 
   /// Call this in dispose() or when app goes to background
   Future<void> goOffline() async {
     if (_uid == null || _connId == null) return;
     final connectionsRef = _baseRef!.child('connections');
-    // Remove only this device's connection
-    await connectionsRef.child(_connId!).remove();
-    // Update last_changed timestamp
-    await _baseRef!.child('last_changed').set(ServerValue.timestamp);
+    final connChild = connectionsRef.child(_connId!);
+    try {
+      // Remove only this device's connection
+      await connChild.remove();
+      // Update last_changed timestamp
+      await _baseRef!.child('last_changed').set(ServerValue.timestamp);
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        debugPrint('⚠️ PresenceService.goOffline: permessi negati su $connChild');
+      } else {
+        rethrow;
+      }
+    }
   }
 
-  /// Clears the stored connection ID (e.g., on full logout) so a new one is generated next login
+  /// Clears the stored connection ID (e.g., on full logout)
   static Future<void> resetConnId() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('presence_conn_id');

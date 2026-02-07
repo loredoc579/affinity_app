@@ -5,6 +5,17 @@ class FilterModel extends ChangeNotifier {
   double maxDistance = 50;
   String gender = 'all';
 
+  Map<String, dynamic> toMap() {
+    return {
+      'ageRange': {
+        'start': ageRange.start,
+        'end':   ageRange.end,
+      },
+      'maxDistance': maxDistance,
+      'gender':      gender,
+    };
+  }
+
   void updateAge(RangeValues v) { ageRange = v; notifyListeners(); }
   void updateDistance(double d) { maxDistance = d; notifyListeners(); }
   void updateGender(String g) { gender = g; notifyListeners(); }

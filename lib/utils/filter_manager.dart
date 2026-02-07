@@ -1,53 +1,73 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 
 import '../models/filter_model.dart';
-import '../services/filter_service.dart';
 import '../widgets/filter_sheet.dart';
 import '../bloc/swipe_bloc.dart';
 import '../bloc/swipe_event.dart';
+import '../services/filter_service.dart';
 
-/// Gestisce apertura del FilterSheet e ricarica dei profili filtrati.
+/// Gestisce apertura del FilterSheet e ricarica dei profili filtrati lato server.
 class FilterManager {
-  /// Mostra il BottomSheet con i filtri, aggiorna Firestore, resetta lo swiper e ricarica i profili.
+  /// Carica i filtri da Firestore, aggiorna il FilterModel e dispatch iniziale LoadProfiles.
+  static Future<void> loadAndDispatch(
+    BuildContext context,
+    String uid,
+    VoidCallback onComplete,
+  ) async {
+    final swipeBloc = Provider.of<SwipeBloc>(context, listen: false);
+    final filter = Provider.of<FilterModel>(context, listen: false);
+
+    try {
+      await FilterService.loadFiltersForUser(filter, uid);
+    } catch (_) {
+      // Ignora errori di caricamento dei filtri
+    }
+
+    // estrai la mappa dei filtri (metodo di esempio, adatta al tuo FilterModel)
+    final Map<String, dynamic> uiFilters = filter.toMap();
+
+    debugPrint('Dispatching LoadProfiles with filters: $uiFilters');
+    
+    swipeBloc.add(
+      LoadProfiles(
+        uiFilters: uiFilters,
+        cursor: null,
+      ),
+    );
+
+    onComplete();
+  }
+
+  /// Mostra il BottomSheet con i filtri, salva le impostazioni e ricarica il bloc.
   static Future<void> showFilterSheet({
     required BuildContext context,
-    required List<Map<String, dynamic>> allProfiles,
-    required Position position,
     required User user,
     required VoidCallback onResetSwiper,
   }) async {
-    final filter = context.read<FilterModel>();
+    final filter = Provider.of<FilterModel>(context, listen: false);
 
-    // ← RILEGGO i filtri dal DB **ogni volta** che apro il foglio
+    // Recupera impostazioni utente da Firestore
     final doc = await FirebaseFirestore.instance
-      .collection('users')
-      .doc(user.uid)
-      .collection('filters')    // nuova sotto‐collezione
-      .doc('settings')          // documento “settings”
-      .get();
+        .collection('users')
+        .doc(user.uid)
+        .collection('filters')
+        .doc('settings')
+        .get();
 
     if (doc.exists && doc.data() != null) {
       final data = doc.data()!;
-
-      // Età
-      if (data['minAge']  != null && data['maxAge'] != null) {
+      if (data['minAge'] != null && data['maxAge'] != null) {
         filter.updateAge(RangeValues(
-          (data['minAge']  as num).toDouble(),
-          (data['maxAge']  as num).toDouble(),
+          (data['minAge'] as num).toDouble(),
+          (data['maxAge'] as num).toDouble(),
         ));
       }
-
-      // Distanza
       if (data['maxDistance'] != null) {
         filter.updateDistance((data['maxDistance'] as num).toDouble());
       }
-
-      // Genere
       if (data['gender'] is String) {
         filter.updateGender(data['gender'] as String);
       }
@@ -55,76 +75,62 @@ class FilterManager {
 
     showModalBottomSheet(
       context: context,
-      builder: (sheetContext) => FilterSheet(
-        ageRange: filter.ageRange,
-        maxDistance: filter.maxDistance,
-        genderFilter: filter.gender,
-        onAgeChanged: (r) {
-          filter.updateAge(r);
-          dispatchLoad(context, allProfiles, position);
-        },
-        onDistanceChanged: (d) {
-          filter.updateDistance(d);
-          dispatchLoad(context, allProfiles, position);
-        },
-        onGenderChanged: (g) {
-          filter.updateGender(g);
-          dispatchLoad(context, allProfiles, position);
-        },
-        onApply: () async {
-          // Salva filtri su Firestore
-          await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .collection('filters')          // sotto‐collezione “filters”
-            .doc('settings')                // documento “settings”
-            .set({
-              'minAge':       filter.ageRange.start.toInt(),
-              'maxAge':       filter.ageRange.end.toInt(),
-              'maxDistance':  filter.maxDistance,
-              'gender':       filter.gender,
-            }, SetOptions(merge: true));     // merge per non sovrascrivere altri campi
+      isScrollControlled: true,
+      builder: (sheetCtx) {
+        return FilterSheet(
+          ageRange: filter.ageRange,
+          maxDistance: filter.maxDistance,
+          genderFilter: filter.gender,
+          onAgeChanged: (range) {
+            filter.updateAge(range);
+            _dispatchLoad(context);
+          },
+          onDistanceChanged: (distance) {
+            filter.updateDistance(distance);
+            _dispatchLoad(context);
+          },
+          onGenderChanged: (gender) {
+            filter.updateGender(gender);
+            _dispatchLoad(context);
+          },
+          onApply: () async {
+            // Salva filtri su Firestore
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .collection('filters')
+                .doc('settings')
+                .set({
+              'minAge': filter.ageRange.start.toInt(),
+              'maxAge': filter.ageRange.end.toInt(),
+              'maxDistance': filter.maxDistance,
+              'gender': filter.gender,
+            }, SetOptions(merge: true));
 
-          // Reset stato swiper nel widget chiamante
-          onResetSwiper();
+            // Reset dello swiper
+            onResetSwiper();
 
-          // Ricarica profili filtrati
-          dispatchLoad(context, allProfiles, position);
+            // Dispatch con filtri UI
+            _dispatchLoad(context);
 
-          Navigator.of(sheetContext).pop(); // usa sheetContext, non quello esterno
-        },
-      ),
+            // Chiude il bottom sheet
+            Navigator.of(sheetCtx).pop();
+          },
+        );
+      },
     );
   }
 
-  /// Applica i filtri correnti e invia l'evento LoadProfiles al bloc.
-  static void dispatchLoad(
-    BuildContext context,
-    List<Map<String, dynamic>> allProfiles,
-    Position position,
-  ) {
-    // 1) Prendo il filter model
+  /// Invia evento LoadProfiles con i filtri correnti al bloc.
+  static void _dispatchLoad(BuildContext context) {
     final filter = Provider.of<FilterModel>(context, listen: false);
-
-    debugPrint('Dispatching LoadProfiles with ${allProfiles.length} profiles');
-    debugPrint('Current filter: '
-      'AgeRange: ${filter.ageRange.start}-${filter.ageRange.end}, '
-      'MaxDistance: ${filter.maxDistance}, '
-      'Gender: ${filter.gender}'
-    );
-
-    // 2) Chiamo il service per filtrare
-    final filtered = FilterService.applyFilters(
-      allProfiles,
-      filter,
-      position,
-    );
-
-    debugPrint('Filtered profiles count: ${filtered.length}');
-
-    // 3) Mando l'evento al BLoC
-    context.read<SwipeBloc>().add(
-      LoadProfiles(filtered),
-    );
+    final uiFilters = <String, dynamic>{
+      'minAge': filter.ageRange.start.toInt(),
+      'maxAge': filter.ageRange.end.toInt(),
+      'maxDistance': filter.maxDistance,
+      'gender': filter.gender,
+    };
+    debugPrint('Dispatching LoadProfiles with uiFilters: $uiFilters');
+    context.read<SwipeBloc>().add(LoadProfiles(uiFilters: uiFilters));
   }
 }

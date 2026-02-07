@@ -45,6 +45,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final data = doc.data();
       final fbPhoto = data?['photoUrl'] as String?;
       final urls = data?['photoUrls'] as List<dynamic>?;
+
+      if (!mounted) return;
+
       setState(() {
         nameController.text = data?['name'] ?? '';
         ageController.text = data?['age'] ?? '';
@@ -61,6 +64,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         isLoading = false;
       });
     } catch (_) {
+      if (!mounted) return;
       setState(() => isLoading = false);
     }
   }
