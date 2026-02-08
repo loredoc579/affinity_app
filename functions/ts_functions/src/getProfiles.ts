@@ -160,7 +160,10 @@ function filterByDistanceAndExclusions(
       const dist = haversineDistance(myLat, myLng, p.lat, p.lng);
       return dist <= maxDistance;
     })
-    .map((p) => p.data);
+    .map((p) => ({
+      ...p.data,
+      uid: p.uid,
+    }));
 }
 
 /**
