@@ -1,19 +1,13 @@
-// ==========================
-// lib/widgets/swipe_card.dart
-// ==========================
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../models/user_model.dart'; // <--- NUOVO IMPORT
+import '../models/user_model.dart';
 import '../screens/profile_detail_screen.dart';
 
 /// Direzioni per l'overlay/bottoni
 enum SwipeDir { none, left, superlike, right }
 
 class SwipeCard extends StatelessWidget {
-  // MODIFICA 1: Usiamo UserModel invece di Map
   final UserModel user;
-  
   final VoidCallback? onLike;
   final VoidCallback? onNope;
   final VoidCallback? onSuperlike;
@@ -26,7 +20,7 @@ class SwipeCard extends StatelessWidget {
 
   const SwipeCard({
     super.key,
-    required this.user, // <--- Costruttore aggiornato
+    required this.user,
     this.onLike,
     this.onNope,
     this.onSuperlike,
@@ -38,30 +32,15 @@ class SwipeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final mediaSize = MediaQuery.of(context).size;
     final cardHeight = mediaSize.height * 0.85;
-    
-    // Fix per l'errore min/max su double
-    final fontSize = (mediaSize.width * 0.05).clamp(16.0, 20.0);
+    final fontSize = (mediaSize.width * 0.05).clamp(16.0, 22.0);
 
-    // MODIFICA 2: Estrazione dati sicura dal Modello
-    final photoUrl = user.imageUrls.isNotEmpty
-        ? user.imageUrls.first
-        : 'https://via.placeholder.com/300';
-    
-    final name = user.name.isNotEmpty ? user.name : 'Sconosciuto';
-    final age = user.age > 0 ? '${user.age}' : '–';
-    
-    // Gestione sicura della location (se esiste nel modello)
-    String city = '';
-    if (user.location != null && user.location!['city'] != null) {
-      city = ' • ${user.location!['city']}';
-    }
-    
-    final titleText = '$name, $age$city';
+    // Estrazione foto dal modello
+    final String mainPhoto = user.imageUrls.isNotEmpty ? user.imageUrls.first : '';
 
-    // helper per stato attivo pulsante
+    // Helper per stato attivo pulsante (DALLA TUA VERSIONE)
     bool isActive(SwipeDir dir) => showOverlay && overlayDir == dir;
 
-    // Helper per costruire i pulsanti (spostato qui per pulizia o mantenuto come metodo)
+    // Helper per costruire i pulsanti ANIMATI (DALLA TUA VERSIONE)
     Widget buildActionButton({
       required IconData icon,
       required Color baseColor,
@@ -113,180 +92,139 @@ class SwipeCard extends StatelessWidget {
               physics: const BouncingScrollPhysics(),
               child: Column(
                 children: [
-                  // ===== immagine + overlay =====
-                  SizedBox(
-                    height: cardHeight * 0.87,
-                    width: double.infinity,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        // img
-                        CachedNetworkImage(
-                          imageUrl: photoUrl,
-                          placeholder: (_, __) => const Center(
-                              child: CircularProgressIndicator(strokeWidth: 2)),
-                          errorWidget: (_, __, ___) =>
-                              const Center(child: Icon(Icons.error, size: 40)),
-                          fit: BoxFit.cover,
+                  // ===== FOTO PRINCIPALE + OVERLAY ANIMATI =====
+                  Stack(
+                    alignment: Alignment.bottomLeft,
+                    children: [
+                      CachedNetworkImage(
+                        imageUrl: mainPhoto,
+                        width: double.infinity,
+                        height: cardHeight * 0.85,
+                        fit: BoxFit.cover,
+                        placeholder: (_, __) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                        errorWidget: (_, __, ___) => const Center(child: Icon(Icons.error, size: 40)),
+                      ),
+                      
+                      // Gradient per leggibilità
+                      Container(
+                        height: 200,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.bottomCenter,
+                            end: Alignment.topCenter,
+                            colors: [Colors.black.withOpacity(0.8), Colors.transparent],
+                          ),
                         ),
+                      ),
 
-                        // titolo (nome • città)
-                        Positioned(
-                          bottom: cardHeight * 0.20,
-                          left: 16,
-                          right: 16,
-                          child: Text(
-                            titleText,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: fontSize,
-                              fontWeight: FontWeight.bold,
-                              shadows: const [
-                                Shadow(
-                                  blurRadius: 6,
-                                  color: Colors.black45,
-                                  offset: Offset(0, 2),
-                                ),
-                              ],
+                      // Testo Nome e Età
+                      Padding(
+                        padding: const EdgeInsets.only(left: 20, bottom: 90),
+                        child: Text(
+                          '${user.name}, ${user.age}',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: fontSize,
+                            fontWeight: FontWeight.bold,
+                            shadows: const [Shadow(blurRadius: 6, color: Colors.black45, offset: Offset(0, 2))],
+                          ),
+                        ),
+                      ),
+
+                      // ===== PULSANTI ANIMATI (Tua logica originale) =====
+                      Positioned(
+                        bottom: 20,
+                        left: 0,
+                        right: 0,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            buildActionButton(
+                              icon: Icons.clear,
+                              baseColor: Colors.red,
+                              active: isActive(SwipeDir.left),
+                              onPressed: onNope,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-
-                        // ===== pulsanti in basso =====
-                        Positioned(
-                          bottom: cardHeight * 0.08,
-                          left: 0,
-                          right: 0,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
-                              // NOPE
-                              buildActionButton(
-                                icon: Icons.clear,
-                                baseColor: Colors.red,
-                                active: isActive(SwipeDir.left),
-                                onPressed: onNope,
-                              ),
-
-                              // SUPERLIKE
-                              buildActionButton(
-                                icon: Icons.flash_on,
-                                baseColor: Colors.blue,
-                                active: isActive(SwipeDir.superlike),
-                                onPressed: onSuperlike,
-                              ),
-
-                              // LIKE
-                              buildActionButton(
-                                icon: Icons.favorite,
-                                baseColor: Colors.green,
-                                active: isActive(SwipeDir.right),
-                                onPressed: onLike,
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        // ===== label diagonale =====
-                        if (showOverlay && overlayDir != SwipeDir.none)
-                          overlayDir == SwipeDir.superlike
-                          // --- SUPER LIKE ---
-                          ? Positioned(
-                              top: 16,
-                              left: 0,
-                              right: 0,
-                              child: Center(
-                                child: Container(
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    border: Border.all(color: Colors.blue, width: 3),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: const Text(
-                                    'SUPER\nLIKE',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      fontSize: 28,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.blue,
-                                      // fontFamily: 'PermanentMarker', // Riattiva se hai il font
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            )
-                          // --- NOPE / LIKE ---
-                          : Positioned(
-                            top: 16,
-                            left: overlayDir == SwipeDir.left ? 16 : null,
-                            right: overlayDir == SwipeDir.right ? 16 : null,
-                            child: Transform.rotate(
-                              angle: overlayDir == SwipeDir.left
-                                  ? -0.3
-                                  : overlayDir == SwipeDir.right
-                                      ? 0.3
-                                      : 0.0,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 6),
-                                decoration: BoxDecoration(
-                                  border: Border.all(
-                                    color: overlayDir == SwipeDir.left
-                                        ? Colors.red
-                                        : overlayDir == SwipeDir.right
-                                            ? Colors.green
-                                            : Colors.blue,
-                                    width: 3,
-                                  ),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  overlayDir == SwipeDir.left
-                                      ? 'NOPE'
-                                      : overlayDir == SwipeDir.right
-                                          ? 'LIKE'
-                                          : 'SUPER\nLIKE',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: 28,
-                                    fontWeight: FontWeight.bold,
-                                    color: overlayDir == SwipeDir.left
-                                        ? Colors.red
-                                        : overlayDir == SwipeDir.right
-                                            ? Colors.green
-                                            : Colors.blue,
-                                    // fontFamily: 'PermanentMarker', // Riattiva se hai il font
-                                  ),
-                                ),
-                              ),
+                            buildActionButton(
+                              icon: Icons.star, // Usiamo star per il superlike
+                              baseColor: Colors.blue,
+                              active: isActive(SwipeDir.superlike),
+                              onPressed: onSuperlike,
                             ),
-                          ),
-                      ],
-                    ),
+                            buildActionButton(
+                              icon: Icons.favorite,
+                              baseColor: Colors.green,
+                              active: isActive(SwipeDir.right),
+                              onPressed: onLike,
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // ===== LABEL DIAGONALI (Tua logica originale) =====
+                      if (showOverlay && overlayDir != SwipeDir.none)
+                        _buildOverlayLabel(overlayDir),
+                    ],
                   ),
 
-                  // ===== dettagli scrollabili =====
+                  // ===== DETTAGLI SCROLLABILI (Stile Bumble con foto extra) =====
                   Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // MODIFICA 3: Adattamento per ProfileDetailScreen
-                        // Se ProfileDetailScreen accetta ancora Map, usiamo toMap().
-                        // Se l'hai aggiornato per accettare UserModel, passa 'user: user'.
-                        // Qui assumo che il widget vecchio voglia ancora 'data'.
-                        ProfileDetailScreen(data: user.toMap()), 
-                        const SizedBox(height: 16.0),
-                      ],
+                    padding: const EdgeInsets.all(20.0),
+                    child: ProfileDetailScreen(
+                      data: user.toMap(),
+                      onLike: onLike,
+                      onSuperlike: onSuperlike,
                     ),
                   ),
                 ],
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Metodo per le etichette diagonali (Ripristinato dalla tua logica)
+  Widget _buildOverlayLabel(SwipeDir dir) {
+    if (dir == SwipeDir.superlike) {
+      return Positioned(
+        top: 40, left: 0, right: 0,
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.blue, width: 3),
+              borderRadius: BorderRadius.circular(4),
+              color: Colors.white.withOpacity(0.2),
+            ),
+            child: const Text(
+              'SUPER\nLIKE',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.blue),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final isLeft = dir == SwipeDir.left;
+    return Positioned(
+      top: 60,
+      left: isLeft ? 20 : null,
+      right: !isLeft ? 20 : null,
+      child: Transform.rotate(
+        angle: isLeft ? -0.3 : 0.3,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            border: Border.all(color: isLeft ? Colors.red : Colors.green, width: 3),
+            borderRadius: BorderRadius.circular(4),
+            color: Colors.white.withOpacity(0.2),
+          ),
+          child: Text(
+            isLeft ? 'NOPE' : 'LIKE',
+            style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: isLeft ? Colors.red : Colors.green),
           ),
         ),
       ),

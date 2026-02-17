@@ -37,16 +37,19 @@ class SwipeRepository {
         'pageSize': pageSize,
       });
 
-      // 2. Estrazione e Conversione
-      final data = response.data as Map<String, dynamic>;
+      // 2. Estrazione e Conversione CORRETTA E SICURA
+      // Usiamo Map.from anche per la risposta principale per sicurezza totale
+      final data = Map<String, dynamic>.from(response.data as Map);
       
-      // Prendiamo la lista grezza
-      final rawList = (data['profiles'] as List).cast<Map<String, dynamic>>();
+      // Prendiamo la lista grezza SENZA usare .cast()
+      final rawList = data['profiles'] as List;
 
-      // Convertiamo ogni Mappa in un UserModel usando il metodo che abbiamo creato prima
-      final List<UserModel> profiles = rawList
-          .map((mappa) => UserModel.fromMap(mappa))
-          .toList();
+      // Convertiamo ogni elemento in modo sicuro
+      final List<UserModel> profiles = rawList.map((elemento) {
+        // Creiamo una mappa pulita per ogni utente
+        final mappaSicura = Map<String, dynamic>.from(elemento as Map);
+        return UserModel.fromMap(mappaSicura);
+      }).toList();
 
       return profiles;
 

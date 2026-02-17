@@ -41,9 +41,20 @@ Future<void> main() async {
   debugPrint('*********** STARTING AffinityApp ***********');
   debugPrint('*********************************************');
 
-  await Firebase.initializeApp(
-    options: firebaseOptions,
-  );
+  try {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: firebaseOptions,
+      );
+    }
+  } catch (e) {
+    // Se l'errore è "duplicate-app", lo ignoriamo bellamente.
+    if (e.toString().contains('duplicate-app')) {
+      debugPrint('Firebase è già inizializzato (Nativo o Hot Restart), andiamo avanti!');
+    } else {
+      debugPrint('Errore imprevisto Firebase: $e');
+    }
+  }
 
   if (useEmulators) {
     await connectToFirebaseEmulators();
@@ -100,6 +111,9 @@ class AffinityApp extends StatelessWidget {
         primaryColor: Colors.blueAccent,
         fontFamily: 'Sans',
       ),
+      routes: {
+        '/login': (context) => LoginScreen(),
+      },
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {

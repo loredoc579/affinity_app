@@ -8,7 +8,7 @@ import '../screens/offline_screen.dart';
 import '../bloc/network_cubit.dart';
 import '../bloc/swipe_bloc.dart';
 import '../bloc/swipe_state.dart';
-import '../bloc/swipe_event.dart'; // Aggiunto import eventi
+import '../bloc/swipe_event.dart'; 
 import '../content/home_content.dart';
 import '../services/android_notifications.dart';
 import '../utils/filter_manager.dart';
@@ -17,6 +17,9 @@ import '../widgets/heart_progress_indicator.dart';
 import 'chat_list_screen.dart';
 import 'profile_screen.dart';
 import '../main.dart'; 
+
+// ECCO L'IMPORT AGGIUNTO PER LA SCHERMATA IMPOSTAZIONI
+import 'settings_screen.dart'; 
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -51,7 +54,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     
     if (!mounted) return;
     _avatarUrl = (doc.data()?['imageUrls'] as List<dynamic>?)?.first as String? ?? ''; 
-    // Nota: ho cambiato 'photoUrls' in 'imageUrls' per coerenza col UserModel, controlla il tuo DB!
 
     try {
       _position = await Geolocator.getCurrentPosition(
@@ -84,7 +86,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       context: context,
       user: user,
       onResetSwiper: () {
-         // Resetta lo swipe ricaricando i profili
          context.read<SwipeBloc>().add(const LoadProfiles());
       },
     );
@@ -103,7 +104,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return const OfflineScreen();
     }
 
-    // Caricamento iniziale dei profili
     if (!_profilesRequested) {
       _profilesRequested = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -119,7 +119,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       child: BlocBuilder<SwipeBloc, SwipeState>(
         builder: (context, state) {
           
-          // Gestione Errori
           if (state is SwipeError) {
             return Scaffold(
               body: Center(
@@ -137,14 +136,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             );
           }
 
-          // Gestione Loading
           if (state is SwipeInitial || state is SwipeLoading) {
             return const Scaffold(
               body: Center(child: HeartProgressIndicator(size: 60)),
             );
           }
 
-          // Le pagine principali
           final pages = <Widget>[
             HomeContent(
               avatarUrl: _avatarUrl!,
@@ -159,6 +156,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
           return Scaffold(
             appBar: AppBar(
+              // --- ECCO IL PULSANTE AGGIUNTO IN ALTO A SINISTRA ---
+              leading: IconButton(
+                icon: const Icon(Icons.settings, color: Colors.black87),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                  );
+                },
+              ),
+              // ----------------------------------------------------
               title: const Text('Affinity', style: TextStyle(color: Colors.pink, fontWeight: FontWeight.bold)),
               centerTitle: true,
               backgroundColor: Colors.white,

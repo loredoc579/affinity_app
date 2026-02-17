@@ -169,14 +169,21 @@ class _HomeContentState extends State<HomeContent> with SingleTickerProviderStat
               }
             },
             onSwipe: (prev, curr, dir) {
-              // MODIFICA: Accesso sicuro tramite UserModel
               final otherUid = users[prev].id;
+              
+              // 🎥 TELECAMERA DI DEBUG: Stampa cosa succede prima di Firebase!
+              debugPrint('👉 [DEBUG SWIPE] Carta n. $prev swipata verso: $dir');
+              debugPrint('👉 [DEBUG SWIPE] ID Utente letto dalla carta: "$otherUid"');
+              
               _resetOverlay();
               
               if (dir == CardSwiperDirection.left) {
                 context.read<SwipeBloc>().add(SwipeNope(otherUid));
               } else if (dir == CardSwiperDirection.right) {
                 context.read<SwipeBloc>().add(SwipeLike(otherUid));
+              } else if (dir == CardSwiperDirection.top) {
+                // Aggiungiamo anche il superlike per sicurezza!
+                // context.read<SwipeBloc>().add(SwipeSuperlike(otherUid));
               }
               
               if (curr != null) setState(() => _currentIndex = curr);
@@ -188,6 +195,7 @@ class _HomeContentState extends State<HomeContent> with SingleTickerProviderStat
               
               // MODIFICA: Passiamo l'oggetto User alla card
               return SwipeCard(
+                key: ValueKey(user.id),
                 user: user, // <--- Importante: dovremo aggiornare SwipeCard
                 showOverlay: _showOverlay && isTop,
                 overlayDir: _mapToSwipeDir(_overlayDir),
