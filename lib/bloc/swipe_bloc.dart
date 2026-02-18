@@ -18,8 +18,6 @@ class SwipeBloc extends Bloc<SwipeEvent, SwipeState> {
   final FirebaseAuth _auth;
   final NetworkCubit _networkCubit;
   
-  bool _isLoading = false;
-
   SwipeBloc(this._repo, this._auth, this._service, this._networkCubit) : super(SwipeInitial()) {
     
     // 1. Caricamento Profili
@@ -46,10 +44,10 @@ class SwipeBloc extends Bloc<SwipeEvent, SwipeState> {
   }
 
   Future<void> _onLoadProfiles(LoadProfiles event, Emitter<SwipeState> emit) async {
-    if (_isLoading) return;
-    _isLoading = true;
     emit(SwipeLoading());
 
+    debugPrint('👉 [2. BLOC] Ricevuto evento LoadProfiles. Filtri contenuti: ${event.uiFilters}');
+    
     try {
       final uid = _auth.currentUser?.uid;
       if (uid == null) {
@@ -71,7 +69,6 @@ class SwipeBloc extends Bloc<SwipeEvent, SwipeState> {
     } catch (e) {
       emit(SwipeError("Errore generico: $e"));
     } finally {
-      _isLoading = false;
     }
   }
 

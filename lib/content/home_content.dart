@@ -7,6 +7,7 @@ import '../bloc/swipe_bloc.dart';
 import '../bloc/swipe_event.dart';
 import '../bloc/swipe_state.dart';
 import '../models/user_model.dart'; // Import fondamentale
+import '../widgets/particle_overlay.dart';
 import '../widgets/swipe_card.dart';
 import '../widgets/heart_progress_indicator.dart';
 import '../widgets/ripple_avatar.dart';
@@ -142,9 +143,12 @@ class _HomeContentState extends State<HomeContent> with SingleTickerProviderStat
           final remaining = users.length - _currentIndex;
           final displayed = remaining.clamp(1, 2);
           
-          if (users[_currentIndex].imageUrls.isNotEmpty) {
+          // MODIFICA: Controllo corazzato prima di fare il precache
+          final firstImageUrl = users[_currentIndex].imageUrls.isNotEmpty ? users[_currentIndex].imageUrls.first : '';
+          
+          if (firstImageUrl.trim().isNotEmpty && firstImageUrl.startsWith('http')) {
              WidgetsBinding.instance.addPostFrameCallback((_) {
-               precacheImage(NetworkImage(users[_currentIndex].imageUrls.first), context);
+               precacheImage(NetworkImage(firstImageUrl), context);
              });
           }
 
@@ -152,6 +156,7 @@ class _HomeContentState extends State<HomeContent> with SingleTickerProviderStat
             key: _swiperKey,
             controller: _controller,
             cardsCount: users.length,
+            isLoop: false,
             numberOfCardsDisplayed: displayed,
             scale: 0.8,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
@@ -168,6 +173,10 @@ class _HomeContentState extends State<HomeContent> with SingleTickerProviderStat
                 _resetOverlay();
               }
             },
+            onEnd: () {
+              // Quando il pacchetto si accorge che non ci sono più carte, forziamo la schermata
+              setState(() => _currentIndex = users.length);
+            },
             onSwipe: (prev, curr, dir) {
               final otherUid = users[prev].id;
               
@@ -178,15 +187,21 @@ class _HomeContentState extends State<HomeContent> with SingleTickerProviderStat
               _resetOverlay();
               
               if (dir == CardSwiperDirection.left) {
+                // ❌ NOPE: Nessuna particella, solo lo swipe
                 context.read<SwipeBloc>().add(SwipeNope(otherUid));
+                
               } else if (dir == CardSwiperDirection.right) {
+                // 💚 LIKE: Lancio i cuoricini e invio a Firebase!
+                ParticleOverlay.show(context, icon: Icons.favorite, color: Colors.green);
                 context.read<SwipeBloc>().add(SwipeLike(otherUid));
+                
               } else if (dir == CardSwiperDirection.top) {
-                // Aggiungiamo anche il superlike per sicurezza!
-                // context.read<SwipeBloc>().add(SwipeSuperlike(otherUid));
+                // 🌟 SUPERLIKE: Lancio le stelline e scommentiamo l'invio a Firebase!
+                ParticleOverlay.show(context, icon: Icons.star, color: Colors.blueAccent);
+                context.read<SwipeBloc>().add(SwipeSuperlike(otherUid));
               }
               
-              if (curr != null) setState(() => _currentIndex = curr);
+              setState(() => _currentIndex = curr ?? users.length);
               return true;
             },
             cardBuilder: (ctx, i, _, __) {

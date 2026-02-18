@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/user_model.dart';
 import '../screens/profile_detail_screen.dart';
+import '../widgets/particle_overlay.dart';
 
 /// Direzioni per l'overlay/bottoni
 enum SwipeDir { none, left, superlike, right }
@@ -35,7 +36,11 @@ class SwipeCard extends StatelessWidget {
     final fontSize = (mediaSize.width * 0.05).clamp(16.0, 22.0);
 
     // Estrazione foto dal modello
-    final String mainPhoto = user.imageUrls.isNotEmpty ? user.imageUrls.first : '';
+    // In swipe_card.dart
+    final String mainPhoto = (user.imageUrls.isNotEmpty && 
+                          user.imageUrls.first.contains('http')) 
+    ? user.imageUrls.first 
+    : 'https://via.placeholder.com/600x800.png?text=Immagine+non+valida';
 
     // Helper per stato attivo pulsante (DALLA TUA VERSIONE)
     bool isActive(SwipeDir dir) => showOverlay && overlayDir == dir;
@@ -131,7 +136,7 @@ class SwipeCard extends StatelessWidget {
                         ),
                       ),
 
-                      // ===== PULSANTI ANIMATI (Tua logica originale) =====
+                      // ===== PULSANTI ANIMATI =====
                       Positioned(
                         bottom: 20,
                         left: 0,
@@ -149,13 +154,23 @@ class SwipeCard extends StatelessWidget {
                               icon: Icons.star, // Usiamo star per il superlike
                               baseColor: Colors.blue,
                               active: isActive(SwipeDir.superlike),
-                              onPressed: onSuperlike,
+                              onPressed: () {
+                                // 1. Magia delle stelle
+                                ParticleOverlay.show(context, icon: Icons.star, color: Colors.blue);
+                                // 2. Esegui il superlike
+                                onSuperlike?.call();
+                              },
                             ),
                             buildActionButton(
                               icon: Icons.favorite,
                               baseColor: Colors.green,
                               active: isActive(SwipeDir.right),
-                              onPressed: onLike,
+                              onPressed: () {
+                                // 1. Magia dei cuori
+                                ParticleOverlay.show(context, icon: Icons.favorite, color: Colors.green);
+                                // 2. Esegui il like
+                                onLike?.call();
+                              },
                             ),
                           ],
                         ),
@@ -185,7 +200,7 @@ class SwipeCard extends StatelessWidget {
     );
   }
 
-  // Metodo per le etichette diagonali (Ripristinato dalla tua logica)
+  // Metodo per le etichette diagonali
   Widget _buildOverlayLabel(SwipeDir dir) {
     if (dir == SwipeDir.superlike) {
       return Positioned(

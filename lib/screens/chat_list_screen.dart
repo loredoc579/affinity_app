@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 
+import '../widgets/safe_avatar.dart';
 import 'chat_screen.dart'; // ← import della ChatScreen
 
 class ChatListScreen extends StatelessWidget {
@@ -112,11 +113,7 @@ class ChatListScreen extends StatelessWidget {
                   final photoUrl = photos.isNotEmpty ? photos.first : '';
 
                   return ListTile(
-                    leading: photoUrl.isNotEmpty
-                        ? CircleAvatar(
-                            backgroundImage: NetworkImage(photoUrl),
-                          )
-                        : const CircleAvatar(child: Icon(Icons.person)),
+                    leading: SafeAvatar(url: photoUrl, radius: 20),
                     title: Text(name),
                     subtitle: Text(lastMessage),
                     onTap: () {

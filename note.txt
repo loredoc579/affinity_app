@@ -55,3 +55,6 @@ firebase deploy --only functions:ts_functions:getProfiles
 
 utente prova id : wj9anhaw4cdj0fI1EHVCtqFat8Q2
 utente fb id: HqbyzepkLwO4mZBw2nvQQFghuTj2
+
+--CANCELLAZIONE GIORNALIERA SWIPES
+PS C:\inetpub\affinity_app\doc> node deleteSwipesToday.js

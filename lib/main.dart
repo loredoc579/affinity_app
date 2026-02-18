@@ -113,6 +113,7 @@ class AffinityApp extends StatelessWidget {
       ),
       routes: {
         '/login': (context) => LoginScreen(),
+        '/home': (context) => const HomeScreen(),
       },
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),

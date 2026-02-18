@@ -41,7 +41,7 @@ class FilterManager {
     onComplete();
   }
 
-  /// Mostra il BottomSheet con i filtri, salva le impostazioni e ricarica il bloc.
+/// Mostra il BottomSheet con i filtri, salva le impostazioni e ricarica il bloc SOLO su Apply.
   static Future<void> showFilterSheet({
     required BuildContext context,
     required User user,
@@ -49,7 +49,7 @@ class FilterManager {
   }) async {
     final filter = Provider.of<FilterModel>(context, listen: false);
 
-    // Recupera impostazioni utente da Firestore
+    // 1. Recupera impostazioni utente da Firestore
     final doc = await FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
@@ -73,48 +73,65 @@ class FilterManager {
       }
     }
 
+    // 2. CREIAMO LE VARIABILI TEMPORANEE copiandole dal filtro attuale
+    RangeValues tempAgeRange = filter.ageRange;
+    double tempDistance = filter.maxDistance;
+    String tempGender = filter.gender;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       builder: (sheetCtx) {
-        return FilterSheet(
-          ageRange: filter.ageRange,
-          maxDistance: filter.maxDistance,
-          genderFilter: filter.gender,
-          onAgeChanged: (range) {
-            filter.updateAge(range);
-            _dispatchLoad(context);
-          },
-          onDistanceChanged: (distance) {
-            filter.updateDistance(distance);
-            _dispatchLoad(context);
-          },
-          onGenderChanged: (gender) {
-            filter.updateGender(gender);
-            _dispatchLoad(context);
-          },
-          onApply: () async {
-            // Salva filtri su Firestore
-            await FirebaseFirestore.instance
-                .collection('users')
-                .doc(user.uid)
-                .collection('filters')
-                .doc('settings')
-                .set({
-              'minAge': filter.ageRange.start.toInt(),
-              'maxAge': filter.ageRange.end.toInt(),
-              'maxDistance': filter.maxDistance,
-              'gender': filter.gender,
-            }, SetOptions(merge: true));
+        // 3. Usiamo StatefulBuilder per far muovere i cursori localmente senza chiamare Firebase
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            return FilterSheet(
+              // Passiamo i valori TEMPORANEI alla UI
+              ageRange: tempAgeRange,
+              maxDistance: tempDistance,
+              genderFilter: tempGender,
+              
+              // Quando muovi il cursore, aggiorniamo SOLO la variabile temporanea!
+              onAgeChanged: (range) {
+                setModalState(() => tempAgeRange = range);
+              },
+              onDistanceChanged: (distance) {
+                setModalState(() => tempDistance = distance);
+              },
+              onGenderChanged: (gender) {
+                setModalState(() => tempGender = gender);
+              },
+              
+              // 4. IL MOMENTO DELLA VERITÀ: L'utente preme APPLICA
+              onApply: () async {
+                // A. Aggiorniamo finalmente il Provider Globale
+                filter.updateAge(tempAgeRange);
+                filter.updateDistance(tempDistance);
+                filter.updateGender(tempGender);
 
-            // Reset dello swiper
-            onResetSwiper();
+                // B. Salviamo su Firestore le nuove variabili
+                await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(user.uid)
+                    .collection('filters')
+                    .doc('settings')
+                    .set({
+                  'minAge': tempAgeRange.start.toInt(),
+                  'maxAge': tempAgeRange.end.toInt(),
+                  'maxDistance': tempDistance,
+                  'gender': tempGender,
+                }, SetOptions(merge: true));
 
-            // Dispatch con filtri UI
-            _dispatchLoad(context);
+                // C. Reset dello swiper
+                onResetSwiper();
 
-            // Chiude il bottom sheet
-            Navigator.of(sheetCtx).pop();
+                // D. Spara la chiamata a Firebase (UNA SOLA VOLTA!)
+                _dispatchLoad(context);
+
+                // E. Chiude il bottom sheet
+                Navigator.of(sheetCtx).pop();
+              },
+            );
           },
         );
       },
@@ -130,7 +147,7 @@ class FilterManager {
       'maxDistance': filter.maxDistance,
       'gender': filter.gender,
     };
-    debugPrint('Dispatching LoadProfiles with uiFilters: $uiFilters');
+    debugPrint('👉 [1. MANAGER] Invio filtri: $uiFilters');
     context.read<SwipeBloc>().add(LoadProfiles(uiFilters: uiFilters));
   }
 }

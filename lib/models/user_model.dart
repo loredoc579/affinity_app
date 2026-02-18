@@ -9,6 +9,7 @@ class UserModel extends Equatable {
   final String jobTitle;
   final List<String> interests;
   final Map<String, dynamic>? location;
+  final String gender; // <--- 1. AGGIUNTO IL CAMPO
 
   const UserModel({
     required this.id,
@@ -19,6 +20,7 @@ class UserModel extends Equatable {
     required this.jobTitle,
     required this.interests,
     this.location,
+    required this.gender, // <--- 2. AGGIUNTO AL COSTRUTTORE
   });
 
   factory UserModel.fromMap(Map<String, dynamic> map) {
@@ -41,10 +43,9 @@ class UserModel extends Equatable {
       parsedInterests = List<String>.from(map['interests']);
     }
 
-    // 3. IL FIX È QUI: Gestione sicura della "scatola" Location
+    // 3. Gestione sicura della "scatola" Location
     Map<String, dynamic>? parsedLocation;
     if (map['location'] != null && map['location'] is Map) {
-      // Creiamo una mappa pulita e tipizzata per la location
       parsedLocation = Map<String, dynamic>.from(map['location'] as Map);
     }
 
@@ -56,7 +57,8 @@ class UserModel extends Equatable {
       bio: map['bio'] ?? '',
       jobTitle: map['jobTitle'] ?? '',
       interests: parsedInterests,
-      location: parsedLocation, // <-- Ora passiamo la mappa pulita!
+      location: parsedLocation,
+      gender: map['gender'] ?? 'N.D.', // <--- 3. ESTRATTO DA FIREBASE!
     );
   }
 
@@ -70,9 +72,11 @@ class UserModel extends Equatable {
       'hobbies': interests.join(', '), 
       'location': location,
       'photoUrls': imageUrls,
+      'gender': gender, // <--- 4. RESTITUITO ALLA UI!
     };
   }
 
   @override
-  List<Object?> get props => [id, name, age, imageUrls, bio, location, interests];
+  // 5. AGGIUNTO AI PROPS (Fondamentale per il Bloc!)
+  List<Object?> get props => [id, name, age, imageUrls, bio, location, interests, gender]; 
 }

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
+import '../widgets/particle_overlay.dart';
+import '../utils/translations.dart';
+
 class ProfileDetailScreen extends StatelessWidget {
   final Map<String, dynamic> data;
   final VoidCallback? onLike;
@@ -13,8 +16,9 @@ class ProfileDetailScreen extends StatelessWidget {
     this.onSuperlike,
   }) : super(key: key);
 
-  // Helper per le immagini secondarie
   Widget _buildVerticalImage(String url) {
+    if (url.trim().isEmpty || !url.startsWith('http')) return const SizedBox.shrink();
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 20),
       child: ClipRRect(
@@ -24,16 +28,14 @@ class ProfileDetailScreen extends StatelessWidget {
           width: double.infinity,
           height: 450,
           fit: BoxFit.cover,
-          placeholder: (_, __) => Container(height: 450, color: Colors.grey[100], child: const Center(child: CircularProgressIndicator())),
-          errorWidget: (_, __, ___) => const SizedBox.shrink(),
+          errorWidget: (context, url, error) => const SizedBox.shrink(),
         ),
       ),
     );
   }
 
-  @override
+ @override
   Widget build(BuildContext context) {
-    // Recupero foto (saltando la prima che è già in cima alla carta)
     final List<String> photos = List<String>.from(data['photoUrls'] ?? []);
     final String? photo2 = photos.length > 1 ? photos[1] : null;
     final String? photo3 = photos.length > 2 ? photos[2] : null;
@@ -46,25 +48,25 @@ class ProfileDetailScreen extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // BIO
         if (data['bio'] != null && data['bio'].toString().isNotEmpty) ...[
-          const Text('Su di me', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          // USO DELLA CHIAVE: 'about_me'.tr
+          Text('about_me'.tr, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Text(data['bio'], style: const TextStyle(fontSize: 16, height: 1.4, color: Colors.black87)),
           const SizedBox(height: 20),
         ],
 
-        // INFO EXTRA
-        Text('📍 Vive a ${ (data['location'] as Map?)?['city'] ?? 'N.D.'}', style: const TextStyle(fontSize: 16)),
+        // USO DELLA CHIAVE COMPOSITA: Etichetta + Dato + Fallback
+        Text('${'lives_in'.tr}${ (data['location'] as Map?)?['city'] ?? 'not_available'.tr}', style: const TextStyle(fontSize: 16)),
         const SizedBox(height: 8),
-        Text('🚻 Genere: ${data['gender'] ?? 'N.D.'}', style: const TextStyle(fontSize: 16)),
+        // QUI USIAMO ENTRAMBE LE EXTENSION!
+        Text('${'gender_label'.tr}${(data['gender'] as String?)?.translateGender ?? 'not_available'.tr}', style: const TextStyle(fontSize: 16)),
 
-        // FOTO 2 (Prima degli hobby)
         if (photo2 != null) _buildVerticalImage(photo2),
 
-        // HOBBY
         if (hobbies.isNotEmpty) ...[
-          const Text('Hobby e passioni', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          // USO DELLA CHIAVE: 'hobbies_title'.tr
+          Text('hobbies_title'.tr, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
           Wrap(
             spacing: 8, runSpacing: 8,
@@ -78,19 +80,20 @@ class ProfileDetailScreen extends StatelessWidget {
           const SizedBox(height: 20),
         ],
 
-        // FOTO 3 (Prima dei pulsanti)
         if (photo3 != null) _buildVerticalImage(photo3),
 
-        // BOTTONI FINALI
         const SizedBox(height: 10),
         Row(
           children: [
-            // SUPERLIKE
             Expanded(
               child: ElevatedButton.icon(
-                onPressed: onSuperlike,
+                onPressed: () {
+                  ParticleOverlay.show(context, icon: Icons.star, color: Colors.blueAccent);
+                  onSuperlike?.call();
+                },
                 icon: const Icon(Icons.star, color: Colors.blueAccent),
-                label: const Text('SUPERLIKE', style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
+                // USO DELLA CHIAVE: 'btn_superlike'.tr
+                label: Text('btn_superlike'.tr, style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blueAccent.withOpacity(0.1),
                   elevation: 0, padding: const EdgeInsets.symmetric(vertical: 16),
@@ -99,14 +102,17 @@ class ProfileDetailScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            // LIKE (Verde su verdino chiaro)
             Expanded(
               child: ElevatedButton.icon(
-                onPressed: onLike,
+                onPressed: () {
+                  ParticleOverlay.show(context, icon: Icons.favorite, color: Colors.green);
+                  onLike?.call();
+                },
                 icon: const Icon(Icons.favorite, color: Colors.green),
-                label: const Text('MI PIACE', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                // USO DELLA CHIAVE: 'btn_like'.tr
+                label: Text('btn_like'.tr, style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green.withOpacity(0.1), // <--- FIX COLORE RICHIESTO
+                  backgroundColor: Colors.green.withOpacity(0.1),
                   elevation: 0, padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),

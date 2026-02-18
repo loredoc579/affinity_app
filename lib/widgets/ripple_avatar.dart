@@ -39,11 +39,21 @@ class RippleAvatar extends StatelessWidget {
               _buildRipple(context, scale: s1, alpha: a1),
               _buildRipple(context, scale: s2, alpha: a2),
               ClipOval(
-                child: Image.network(
-                  imageUrl,
+                child: Container(
                   width: imageSize,
                   height: imageSize,
-                  fit: BoxFit.cover,
+                  color: Colors.grey[300], // Sfondo grigio se manca la foto
+                  child: (imageUrl.trim().isNotEmpty && imageUrl.startsWith('http'))
+                      ? Image.network(
+                          imageUrl,
+                          width: imageSize,
+                          height: imageSize,
+                          fit: BoxFit.cover,
+                          // Se il link c'è ma l'immagine è rotta nel server, non crasha!
+                          errorBuilder: (context, error, stackTrace) => 
+                              Icon(Icons.person, size: imageSize * 0.6, color: Colors.white),
+                        )
+                      : Icon(Icons.person, size: imageSize * 0.6, color: Colors.white),
                 ),
               ),
             ],

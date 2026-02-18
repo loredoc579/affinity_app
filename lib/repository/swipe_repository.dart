@@ -16,6 +16,7 @@ class SwipeRepository {
     String? cursor,
     int pageSize = 30,
   }) async {
+    debugPrint('👉 [3. REPO] Sto per chiamare Firebase. Filtri in mano: $uiFilters');
     final callable = _functions.httpsCallable('getProfiles');
     
     try {
@@ -37,12 +38,21 @@ class SwipeRepository {
         'pageSize': pageSize,
       });
 
+      if (response.data == null) {
+        debugPrint("⚠️ [REPO] Firebase ha risposto NULL");
+        return [];
+      }
+
+      debugPrint("📦 [REPO] Risposta RAW da Firebase: ${response.data}");
+
       // 2. Estrazione e Conversione CORRETTA E SICURA
       // Usiamo Map.from anche per la risposta principale per sicurezza totale
       final data = Map<String, dynamic>.from(response.data as Map);
       
       // Prendiamo la lista grezza SENZA usare .cast()
       final rawList = data['profiles'] as List;
+
+      debugPrint("👥 [REPO] Numero profili grezzi trovati: ${rawList.length}");
 
       // Convertiamo ogni elemento in modo sicuro
       final List<UserModel> profiles = rawList.map((elemento) {
@@ -51,8 +61,9 @@ class SwipeRepository {
         return UserModel.fromMap(mappaSicura);
       }).toList();
 
-      return profiles;
+      debugPrint("🎯 [REPO] Conversione completata. Modelli creati: ${profiles.length}");
 
+      return profiles;
     } on FirebaseFunctionsException catch (e) {
       debugPrint('⚠️ FirebaseFunctionsException: ${e.message}');
       rethrow;

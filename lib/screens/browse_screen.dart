@@ -2,6 +2,8 @@ import 'package:affinity_app/widgets/heart_progress_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../widgets/safe_avatar.dart';
+
 /// Schermata di esplorazione: mostra tutti i profili in una griglia 2 colonne
 class BrowseScreen extends StatelessWidget {
   const BrowseScreen({Key? key}) : super(key: key);
@@ -50,14 +52,9 @@ class BrowseScreen extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    CircleAvatar(
+                    SafeAvatar(
                       radius: 40,
-                      backgroundImage: photoUrl != null
-                          ? NetworkImage(photoUrl)
-                          : null,
-                      child: photoUrl == null
-                          ? const Icon(Icons.person, size: 40)
-                          : null,
+                      url: photoUrl,
                     ),
                     const SizedBox(height: 8),
                     Text(

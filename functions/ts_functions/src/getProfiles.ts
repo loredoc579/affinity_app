@@ -35,8 +35,9 @@ function haversineDistance(
 
 interface UIFilters {
   gender?: "male" | "female" | "other" | "all";
-  ageRange?: { start: number; end: number };
-  maxDistance?: number;
+  minAge?: number | string;// Accetta sia numero che stringa
+  maxAge?: number | string;// Accetta sia numero che stringa
+  maxDistance?: number | string; // Niente più 'any'!
 }
 
 interface Location {
@@ -129,10 +130,14 @@ function applyPagination(
  * Filtra i documenti Firestore escludendo ID e applicando il filtro distanza
  * @param {admin.firestore.QueryDocumentSnapshot[]} docs
  *   Array di documenti Firestore da filtrare
- * @param {Set<string>} excluded Set di userId da escludere
- * @param {number} myLat Latitudine dell'utente chiamante
- * @param {number} myLng Longitudine dell'utente chiamante
- * @param {number} [maxDistance] Distanza massima in km per includere i profili
+ * @param {Set<string>} excluded
+ *   Set di userId da escludere
+ * @param {number} myLat
+ *   Latitudine dell'utente chiamante
+ * @param {number} myLng
+ *   Longitudine dell'utente chiamante
+ * @param {any} rawMaxDistance
+ *   Distanza massima consentita (opzionale)
  * @return {Record<string, unknown>[]} Array di profili filtrati
  */
 function filterByDistanceAndExclusions(
@@ -140,8 +145,11 @@ function filterByDistanceAndExclusions(
   excluded: Set<string>,
   myLat: number,
   myLng: number,
-  maxDistance?: number
+  rawMaxDistance?: number | string
 ): Record<string, unknown>[] {
+  const maxDistance = Number(rawMaxDistance);
+  const hasDistanceFilter = !isNaN(maxDistance) && maxDistance > 0;
+
   return docs
     .map((d) => {
       const data = d.data();
@@ -154,11 +162,15 @@ function filterByDistanceAndExclusions(
       };
     })
     .filter((p) => {
-      if (excluded.has(p.uid)) return false;
-      if (typeof maxDistance !== "number") return true;
+      if (excluded.has(p.uid)) return false; // Scarta chi hai già swipato
+
+      if (!hasDistanceFilter) return true;
+
+      // Se non abbiamo la posizione dell'altro utente, lo scartiamo
       if (typeof p.lat !== "number" || typeof p.lng !== "number") return false;
+
       const dist = haversineDistance(myLat, myLng, p.lat, p.lng);
-      return dist <= maxDistance;
+      return dist <= maxDistance; // Applica il raggio reale!
     })
     .map((p) => ({
       ...p.data,
@@ -218,20 +230,28 @@ export const getProfiles = onCall<Req>(async (req) => {
     );
   }
 
-  // 5a) filtro età in JS (age è stringa nel DB)
+  // 5a) Filtro Età
   const rawDocs = snap.docs;
   const ageFilteredDocs = rawDocs.filter((doc) => {
-    if (!uiFilters?.ageRange) return true;
-    const {start, end} = uiFilters.ageRange;
+    const minA = Number(uiFilters?.minAge);
+    const maxA = Number(uiFilters?.maxAge);
+
+    // Se non ci sono i filtri di Flutter, facciamo passare
+    if (isNaN(minA) || isNaN(maxA)) return true;
+
     const ageRaw = doc.get("age");
     const ageNum = typeof ageRaw === "number" ?
       ageRaw :
-      parseInt(ageRaw as string, 10);
-    return ageNum >= start && ageNum <= end;
+      parseInt(String(ageRaw), 10);
+
+    // Se l'utente nel DB ha un'età vuota o corrotta, non lo mostriamo
+    if (isNaN(ageNum)) return false;
+
+    return ageNum >= minA && ageNum <= maxA;
   });
   console.log("🗂️ Documenti dopo filtro età:", ageFilteredDocs.length);
 
-  // 5b) filtro distanza + ID esclusi
+  // 5b) Filtro distanza + ID esclusi
   const profiles = filterByDistanceAndExclusions(
     ageFilteredDocs,
     excluded,

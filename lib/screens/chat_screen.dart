@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_database/firebase_database.dart';
 
+import '../widgets/safe_avatar.dart';
+
 class ChatScreen extends StatefulWidget {
   final String chatId;
   final String otherUserId;
@@ -103,15 +105,7 @@ class _ChatScreenState extends State<ChatScreen> {
       appBar: AppBar(
         title: Row(
           children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundImage: widget.otherUserPhotoUrl.isNotEmpty
-                  ? NetworkImage(widget.otherUserPhotoUrl)
-                  : null,
-              child: widget.otherUserPhotoUrl.isEmpty
-                  ? const Icon(Icons.person)
-                  : null,
-            ),
+            SafeAvatar(url: widget.otherUserPhotoUrl, radius: 18),
             const SizedBox(width: 8),
             Expanded(
               child: Column(

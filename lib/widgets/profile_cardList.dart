@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'safe_avatar.dart';
+
 /// Widget che mostra una lista di profili (card) presi da Firestore
 class ProfileCardList extends StatelessWidget {
   const ProfileCardList({Key? key}) : super(key: key);
@@ -68,14 +70,9 @@ class _ProfileCard extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         child: Row(
           children: [
-            CircleAvatar(
+            SafeAvatar(
               radius: 36,
-              backgroundImage: photoUrl != null
-                  ? NetworkImage(photoUrl!)
-                  : null,
-              child: photoUrl == null
-                  ? const Icon(Icons.person, size: 36)
-                  : null,
+              url: photoUrl,
             ),
             const SizedBox(width: 12),
             Expanded(

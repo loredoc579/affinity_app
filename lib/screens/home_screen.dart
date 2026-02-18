@@ -53,7 +53,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
     
     if (!mounted) return;
-    _avatarUrl = (doc.data()?['imageUrls'] as List<dynamic>?)?.first as String? ?? ''; 
+    final data = doc.data();
+    _avatarUrl = data?['photoUrl'] as String?  
+              ?? (data?['photoUrls'] as List<dynamic>?)?.firstOrNull as String? 
+              ?? '';
 
     try {
       _position = await Geolocator.getCurrentPosition(
@@ -80,13 +83,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _onNavTap(int index) => setState(() => _navIndex = index);
 
-  void _showFilters() {
+void _showFilters() {
     final user = FirebaseAuth.instance.currentUser!;
     FilterManager.showFilterSheet(
       context: context,
       user: user,
       onResetSwiper: () {
-         context.read<SwipeBloc>().add(const LoadProfiles());
+         // Lasciamo vuoto! Il FilterManager fa già il dispatch coi filtri!
       },
     );
   }
@@ -107,14 +110,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!_profilesRequested) {
       _profilesRequested = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        context.read<SwipeBloc>().add(const LoadProfiles());
+        final uid = FirebaseAuth.instance.currentUser!.uid;
+        FilterManager.loadAndDispatch(context, uid, () {}); // <-- CARICA I FILTRI E SPARA!
       });
     }
 
     return BlocListener<NetworkCubit, NetworkStatus>(
       listenWhen: (prev, curr) => prev == NetworkStatus.offline && curr == NetworkStatus.online,
       listener: (context, _) {
-         context.read<SwipeBloc>().add(const LoadProfiles());
+         final uid = FirebaseAuth.instance.currentUser!.uid;
+         FilterManager.loadAndDispatch(context, uid, () {}); // <-- CARICA I FILTRI E SPARA!
       },
       child: BlocBuilder<SwipeBloc, SwipeState>(
         builder: (context, state) {
@@ -127,7 +132,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   children: [
                     Text(state.message, style: const TextStyle(color: Colors.red)),
                     ElevatedButton(
-                      onPressed: () => context.read<SwipeBloc>().add(const LoadProfiles()), 
+                      onPressed: () {
+                        final uid = FirebaseAuth.instance.currentUser!.uid;
+                        FilterManager.loadAndDispatch(context, uid, () {});
+                      }, 
                       child: const Text("Riprova")
                     )
                   ],
