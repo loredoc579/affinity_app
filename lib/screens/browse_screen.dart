@@ -42,7 +42,7 @@ class BrowseScreen extends StatelessWidget {
             itemBuilder: (context, index) {
               final data = docs[index].data();
               final name = data['name'] as String? ?? '—';
-              final age = data['age'] as String? ?? '—';
+              final age = data['age']?.toString() ?? '—';
               final photoUrl = data['photoUrl'] as String?;
               return Card(
                 shape: RoundedRectangleBorder(
@@ -54,7 +54,7 @@ class BrowseScreen extends StatelessWidget {
                   children: [
                     SafeAvatar(
                       radius: 40,
-                      url: photoUrl,
+                      url: photoUrl ?? '',
                     ),
                     const SizedBox(height: 8),
                     Text(

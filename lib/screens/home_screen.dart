@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:geocoding/geocoding.dart';
 
 import 'dart:async'; // Serve per ascoltare i cambiamenti in tempo reale
 
@@ -98,11 +99,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         desiredAccuracy: LocationAccuracy.best,
       ).timeout(const Duration(seconds: 5));
 
-      // Save to Firestore
-      FirebaseFirestore.instance.collection('users').doc(uid).update({
-        'location.position': GeoPoint(_position!.latitude, _position!.longitude),
-        'location.updatedAt': FieldValue.serverTimestamp(),
-      });
+      List<Placemark> placemarks = await placemarkFromCoordinates(_position!.latitude, _position!.longitude);
+      if (placemarks.isNotEmpty) {
+        final city = placemarks.first.locality ?? "Sconosciuta";
+
+        debugPrint("📍 Posizione ottenuta: ${_position!.latitude}, ${_position!.longitude} - Città: $city");
+
+        FirebaseFirestore.instance.collection('users').doc(uid).update({
+          'location.position': GeoPoint(_position!.latitude, _position!.longitude),
+          'location.city': city,
+          'location.updatedAt': FieldValue.serverTimestamp(),
+        });
+      } else {
+        debugPrint("⚠️ Non sono riuscito a ottenere la città dalla posizione.");
+         FirebaseFirestore.instance.collection('users').doc(uid).update({
+          'location.position': GeoPoint(_position!.latitude, _position!.longitude),
+          'location.updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
 
       debugPrint("📍 Posizione aggiornata su Firestore: ${_position!.latitude}, ${_position!.longitude}");
     } catch (e) {

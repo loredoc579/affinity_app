@@ -9,8 +9,8 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:typed_data';
 
-import '../services/presence_service.dart';
-import './auth/auth_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+
 import '../widgets/heart_progress_indicator.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -24,8 +24,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final user = FirebaseAuth.instance.currentUser;
   final nameController = TextEditingController();
   final ageController = TextEditingController();
-  final hobbiesController = TextEditingController();
   final emailController = TextEditingController();
+  final _jobController = TextEditingController();
+  final _bioController = TextEditingController();
+  String _city = 'Caricamento...';
+  List<String> _selectedHobbies = [];
+  final List<String> _availableHobbies = [
+    'Viaggi', 'Sport', 'Palestra', 'Musica', 'Cinema', 
+    'Lettura', 'Videogiochi', 'Cucina', 'Animali', 'Arte'
+  ];
   List<String?> photoUrls = List<String?>.filled(9, null);
   bool isLoading = true;
 
@@ -52,14 +59,20 @@ Future<void> loadProfile() async {
       if (!mounted) return;
 
       setState(() {
-        nameController.text = data?['name'] ?? '';
-        
-        // --- CRITICAL FIX: Convert age to String ---
-        ageController.text = data?['age']?.toString() ?? ''; 
-        
-        hobbiesController.text = data?['hobbies'] ?? '';
+        nameController.text = data?['name'] ?? '';       
+        ageController.text = data?['age']?.toString() ?? '';        
         emailController.text = data?['email'] ?? user!.email ?? '';
+        _jobController.text = data?['jobTitle'] ?? '';
+        _bioController.text = data?['bio'] ?? '';
+        _city = (data?['location'] as Map<String, dynamic>?)?['city'] as String? ?? 'Sconosciuta';
         
+        final fetchedHobbies = data?['hobbies'];
+        if (fetchedHobbies is List) {
+          _selectedHobbies = List<String>.from(fetchedHobbies);
+        } else {
+          _selectedHobbies = [];
+        }
+
         if (urls != null && urls.isNotEmpty) {
            photoUrls = List<String?>.filled(9, null);
            for (int i = 0; i < urls.length && i < 9; i++) {
@@ -92,11 +105,13 @@ Future<void> loadProfile() async {
           .collection('users')
           .doc(user!.uid)
           .set({
-        'name': nameController.text,
-        'age': ageInt ?? 18, // Save as number!
-        'hobbies': hobbiesController.text,
-        'email': emailController.text, 
+        'name': nameController.text.trim(),
+        'age': ageInt ?? 18,
+        'email': emailController.text.trim(), 
         'photoUrls': photoUrls,
+        'jobTitle': _jobController.text.trim(),
+        'bio': _bioController.text.trim(),
+        'hobbies': _selectedHobbies, 
       }, SetOptions(merge: true));
       
       ScaffoldMessenger.of(context).showSnackBar(
@@ -201,7 +216,7 @@ Future<void> loadProfile() async {
                           ),
                           image: url != null
                               ? DecorationImage(
-                                  image: NetworkImage(url),
+                                  image: CachedNetworkImageProvider(url),
                                   fit: BoxFit.cover,
                                 )
                               : null,
@@ -263,18 +278,80 @@ Future<void> loadProfile() async {
           ),
           const SizedBox(height: 24),
           TextField(
-            controller: nameController,
-            decoration: const InputDecoration(labelText: "Nome"),
+            controller: TextEditingController(text: _city),
+            readOnly: true,
+            style: const TextStyle(color: Colors.grey),
+            decoration: const InputDecoration(
+              labelText: 'Città Attuale',
+              prefixIcon: Icon(Icons.location_on, color: Colors.grey),
+            ),
+          ),
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(labelText: "Nome"),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 1,
+                child: TextField(
+                  controller: ageController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: "Età"),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           TextField(
-            controller: ageController,
-            decoration: const InputDecoration(labelText: "Età"),
+            controller: _jobController,
+            maxLength: 30,
+            decoration: const InputDecoration(
+              labelText: "Professione",
+              hintText: "Es. Software Engineer",
+            ),
           ),
           const SizedBox(height: 12),
           TextField(
-            controller: hobbiesController,
-            decoration: const InputDecoration(labelText: "Passioni"),
+            controller: _bioController,
+            maxLines: 4,
+            maxLength: 500,
+            decoration: const InputDecoration(
+              labelText: "Bio",
+              hintText: "Raccontaci qualcosa di te...",
+              alignLabelWithHint: true,
+            ),
+          ),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text('I tuoi Hobbies', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8.0,
+            runSpacing: 4.0,
+            children: _availableHobbies.map((hobby) {
+              final isSelected = _selectedHobbies.contains(hobby);
+              return FilterChip(
+                label: Text(hobby),
+                selected: isSelected,
+                selectedColor: Colors.pink.shade100,
+                checkmarkColor: Colors.pink,
+                onSelected: (bool selected) {
+                  setState(() {
+                    if (selected) {
+                      if (_selectedHobbies.length < 5) _selectedHobbies.add(hobby);
+                    } else {
+                      _selectedHobbies.remove(hobby);
+                    }
+                  });
+                },
+              );
+            }).toList(),
           ),
           const SizedBox(height: 12),
           TextField(

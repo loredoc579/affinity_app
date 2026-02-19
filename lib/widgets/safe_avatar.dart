@@ -1,23 +1,40 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class SafeAvatar extends StatelessWidget {
-  final String? url;
+  final String url;
   final double radius;
 
-  const SafeAvatar({super.key, this.url, this.radius = 20.0});
+  const SafeAvatar({Key? key, required this.url, required this.radius}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    // 1. Controlliamo se l'URL è valido, non nullo e inizia con http/https
-    final bool isValidUrl = url != null && url!.trim().isNotEmpty && url!.trim().startsWith(RegExp(r'https?://'));
+    if (url.isEmpty) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: Colors.grey.shade300,
+        child: Icon(Icons.person, size: radius, color: Colors.white),
+      );
+    }
 
-    return CircleAvatar(
-      radius: radius,
-      backgroundColor: Colors.grey[300],
-      // 2. Se è valido lo carichiamo, altrimenti passiamo null al backgroundImage
-      backgroundImage: isValidUrl ? NetworkImage(url!.trim()) : null,
-      // 3. Se NON è valido, mostriamo un'icona
-      child: !isValidUrl ? Icon(Icons.person, color: Colors.white, size: radius) : null,
+    return CachedNetworkImage(
+      imageUrl: url,
+      imageBuilder: (context, imageProvider) => CircleAvatar(
+        radius: radius,
+        backgroundImage: imageProvider,
+      ),
+      // Mostra un pallino di caricamento mentre la scarica la prima volta
+      placeholder: (context, url) => CircleAvatar(
+        radius: radius,
+        backgroundColor: Colors.grey.shade200,
+        child: const CircularProgressIndicator(strokeWidth: 2),
+      ),
+      // Se l'URL è rotto, mostra un'icona di errore
+      errorWidget: (context, url, error) => CircleAvatar(
+        radius: radius,
+        backgroundColor: Colors.red.shade100,
+        child: const Icon(Icons.error, color: Colors.red),
+      ),
     );
   }
 }

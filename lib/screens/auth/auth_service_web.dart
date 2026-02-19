@@ -1,14 +1,39 @@
 // lib/screens/auth/auth_service_web.dart
 
 import 'dart:async';
-import 'dart:html' as html;
-import 'dart:js_util' as js_util;
+import 'dart:js_interop'; // IL NUOVO STANDARD
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
 import 'auth_service_stub.dart';
+
+// --- BINDING JS INTEROP (Mappatura del codice Javascript di Facebook) ---
+
+@JS('FB.login')
+external void _fbLoginJS(JSFunction callback, JSObject options);
+
+@JS()
+@anonymous
+extension type FbLoginOptions._(JSObject _) implements JSObject {
+  external factory FbLoginOptions({String scope});
+}
+
+@JS()
+@anonymous
+extension type FbLoginResponse._(JSObject _) implements JSObject {
+  external String get status;
+  external FbAuthResponse? get authResponse;
+}
+
+@JS()
+@anonymous
+extension type FbAuthResponse._(JSObject _) implements JSObject {
+  external String get accessToken;
+}
+
+// ------------------------------------------------------------------------
 
 class AuthServiceImpl implements AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -19,32 +44,41 @@ class AuthServiceImpl implements AuthService {
   Future<User?> signInWithFacebook() async {
     // 1) faccio FB.login via JS
     final fbResponse = await _jsFbLogin();
-    // 2) estraggo token
-    final status = js_util.getProperty(fbResponse, 'status') as String;
-    if (status != 'connected') return null;
-    final authResp = js_util.getProperty(fbResponse, 'authResponse');
-    final token = js_util.getProperty(authResp, 'accessToken') as String;
+    
+    // 2) estraggo token in modo strongly-typed (sicuro)
+    if (fbResponse.status != 'connected') return null;
+    
+    final token = fbResponse.authResponse?.accessToken;
+    if (token == null) return null;
+
     // 3) chiamo Firebase con il token
     return await _signInWithFacebook(token);
   }
 
-  /// JS-interop per FB.login
-  Future<dynamic> _jsFbLogin() {
-    final completer = Completer<dynamic>();
-    final fb = js_util.getProperty(html.window, 'FB');
-    js_util.callMethod(fb, 'login', <Object>[
-      js_util.allowInterop((resp) => completer.complete(resp)),
-      js_util.jsify({'scope': 'public_profile,email'}),
-    ]);
+  /// JS-interop per FB.login aggiornato a Dart 3
+  Future<FbLoginResponse> _jsFbLogin() {
+    final completer = Completer<FbLoginResponse>();
+    
+    // Creiamo la callback convertendola in una JSFunction tramite .toJS
+    final callback = ((FbLoginResponse response) {
+      completer.complete(response);
+    }).toJS;
+
+    // Opzioni di login tipizzate
+    final options = FbLoginOptions(scope: 'public_profile,email');
+
+    // Chiamata diretta alla funzione Javascript
+    _fbLoginJS(callback, options);
+    
     return completer.future;
   }
 
   /// Converte il token FB in credenziali Firebase e aggiorna Firestore
   Future<User?> _signInWithFacebook(String token) async {
     final credential = FacebookAuthProvider.credential(token);
-    final userCred =
-        await FirebaseAuth.instance.signInWithCredential(credential);
+    final userCred = await FirebaseAuth.instance.signInWithCredential(credential);
     final user = userCred.user;
+    
     if (user != null) {
       await FirebaseFirestore.instance
           .collection('users')

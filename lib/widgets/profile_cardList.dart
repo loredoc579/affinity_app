@@ -27,13 +27,16 @@ class ProfileCardList extends StatelessWidget {
           itemCount: docs.length,
           itemBuilder: (context, index) {
             final data = docs[index].data();
+            final rawHobbies = data['hobbies'] as List<dynamic>? ?? [];
+            final hobbiesList = rawHobbies.map((e) => e.toString()).toList();
+
             return _ProfileCard(
-              name: data['name'] as String? ?? '—',
-              age: data['age'] as String? ?? '—',
+              name: data['name'] as String? ?? '—',             
+              age: data['age']?.toString() ?? '—',              
               city: (data['location'] as Map<String, dynamic>?)?['city'] as String? ?? '—',
-              photoUrl: data['photoUrl'] as String?,
+              photoUrl: data['photoUrl'] as String? ?? '',
               gender: data['gender'] as String? ?? '—',
-              hobbies: (data['hobbies'] as String?)?.split(', ') ?? [],
+              hobbies: hobbiesList, // Passiamo la lista corretta!
             );
           },
         );
@@ -48,7 +51,7 @@ class _ProfileCard extends StatelessWidget {
   final String city;
   final String gender;
   final List<String> hobbies;
-  final String? photoUrl;
+  final String photoUrl;
 
   const _ProfileCard({
     Key? key,
@@ -57,7 +60,7 @@ class _ProfileCard extends StatelessWidget {
     required this.city,
     required this.gender,
     required this.hobbies,
-    this.photoUrl,
+    required this.photoUrl,
   }) : super(key: key);
 
   @override
