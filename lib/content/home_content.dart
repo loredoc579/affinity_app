@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
+import '../utils/filter_manager.dart';
 import '../bloc/swipe_bloc.dart';
 import '../bloc/swipe_event.dart';
 import '../bloc/swipe_state.dart';
@@ -133,6 +135,34 @@ class _HomeContentState extends State<HomeContent> with SingleTickerProviderStat
                     controller: _rippleController,
                     imageUrl: widget.avatarUrl,
                     imageSize: 100,
+                  ),
+                  const SizedBox(height: 40),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      // 1. Dimentichiamo le carte vecchie e resettiamo l'indice a ZERO!
+                      setState(() => _currentIndex = 0);
+                      
+                      // 2. Chiamiamo Firebase usando la tua "cabina di regia" dei filtri
+                      final uid = FirebaseAuth.instance.currentUser?.uid;
+                      if (uid != null) {
+                        FilterManager.loadAndDispatch(context, uid, () {
+                          debugPrint("🔄 Profili ricaricati dal pulsante!");
+                        });
+                      }
+                    },
+                    icon: const Icon(Icons.refresh, color: Colors.white),
+                    label: const Text(
+                      'Ricarica Profili', 
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.pink, // Colore in stile app di dating
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      elevation: 4,
+                    ),
                   ),
                 ],
               ),

@@ -35,13 +35,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     loadProfile();
   }
 
-  Future<void> loadProfile() async {
+Future<void> loadProfile() async {
     if (user == null) return;
     try {
       final doc = await FirebaseFirestore.instance
           .collection('users')
           .doc(user!.uid)
           .get();
+      
+      if (!doc.exists) return; 
+
       final data = doc.data();
       final fbPhoto = data?['photoUrl'] as String?;
       final urls = data?['photoUrls'] as List<dynamic>?;
@@ -50,11 +53,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       setState(() {
         nameController.text = data?['name'] ?? '';
-        ageController.text = data?['age'] ?? '';
+        
+        // --- CRITICAL FIX: Convert age to String ---
+        ageController.text = data?['age']?.toString() ?? ''; 
+        
         hobbiesController.text = data?['hobbies'] ?? '';
         emailController.text = data?['email'] ?? user!.email ?? '';
-        if (urls != null && urls.length >= 9) {
-          photoUrls = List<String?>.from(urls);
+        
+        if (urls != null && urls.isNotEmpty) {
+           photoUrls = List<String?>.filled(9, null);
+           for (int i = 0; i < urls.length && i < 9; i++) {
+             photoUrls[i] = urls[i] as String?;
+           }
         } else {
           photoUrls = List<String?>.filled(9, null);
           if (fbPhoto != null && fbPhoto.isNotEmpty) {
@@ -63,7 +73,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
         isLoading = false;
       });
-    } catch (_) {
+    } catch (e) {
+      debugPrint("Errore caricamento profilo: $e");
       if (!mounted) return;
       setState(() => isLoading = false);
     }
@@ -72,17 +83,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> saveProfile() async {
     if (user == null) return;
     setState(() => isLoading = true);
+    
+    // --- CRITICAL FIX: Convert age back to Integer for Firestore ---
+    int? ageInt = int.tryParse(ageController.text);
+
     try {
       await FirebaseFirestore.instance
           .collection('users')
           .doc(user!.uid)
           .set({
         'name': nameController.text,
-        'age': ageController.text,
+        'age': ageInt ?? 18, // Save as number!
         'hobbies': hobbiesController.text,
-        'email': emailController.text,
+        'email': emailController.text, 
         'photoUrls': photoUrls,
       }, SetOptions(merge: true));
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Profilo salvato con successo!"))
+      );
+    } catch(e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Errore salvataggio: $e"))
+      );
     } finally {
       setState(() => isLoading = false);
     }

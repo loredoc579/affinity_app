@@ -58,3 +58,7 @@ utente fb id: HqbyzepkLwO4mZBw2nvQQFghuTj2
 
 --CANCELLAZIONE GIORNALIERA SWIPES
 PS C:\inetpub\affinity_app\doc> node deleteSwipesToday.js
+
+--CONNESSIONE WIFI con dispositivo--
+adb pair 192.168.1.68:46381 (prendendo porta e pin direttamente dati dalla modalità sul dispositivo)
+adb connect 192.168.1.68:37483 (prendendo porta visualizzata in impostazioni)

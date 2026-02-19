@@ -18,6 +18,7 @@ import 'notifications/notifications_stub.dart'
 import 'bloc/network_cubit.dart';
 import 'bloc/swipe_bloc.dart';
 import 'repository/swipe_repository.dart';
+import 'screens/auth/signup_screen.dart';
 import 'services/swipe_service.dart';
 import 'models/filter_model.dart';
 
@@ -114,6 +115,7 @@ class AffinityApp extends StatelessWidget {
       routes: {
         '/login': (context) => LoginScreen(),
         '/home': (context) => const HomeScreen(),
+        '/signup': (context) => SignupScreen(),
       },
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
