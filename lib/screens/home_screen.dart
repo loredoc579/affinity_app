@@ -128,6 +128,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    if (state == AppLifecycleState.resumed) {
+      // L'utente ha riaperto l'app -> Torna Online
+      PresenceService().init(); 
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      // L'utente ha messo l'app in background o l'ha chiusa -> Vai Offline subito
+      PresenceService().goOffline();
+    }
+  }
+
   void _onNavTap(int index) => setState(() => _navIndex = index);
 
   void _showFilters() {
@@ -272,10 +285,41 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               showUnselectedLabels: false,
               selectedItemColor: Colors.pink,
               unselectedItemColor: Colors.grey,
-              items: const [
-                BottomNavigationBarItem(icon: Icon(Icons.style), label: 'Swipe'),
-                BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_outline), label: 'Chat'),
-                BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: 'Profile'),
+              items: [
+                const BottomNavigationBarItem(icon: Icon(Icons.style), label: 'Swipe'),
+                BottomNavigationBarItem(
+                  icon: StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance.collection('chats')
+                        .where('participants', arrayContains: FirebaseAuth.instance.currentUser?.uid)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      int unread = 0;
+                      if (snapshot.hasData) {
+                        final uid = FirebaseAuth.instance.currentUser?.uid;
+                        for (var doc in snapshot.data!.docs) {
+                          final data = doc.data() as Map<String, dynamic>;
+                          
+                          final isDeleted = data['deleted'] == true;
+                          
+                          if (!isDeleted) {
+                            final readBy = List<String>.from(data['readBy'] as List<dynamic>? ?? []);
+                            // Se il mio ID non è nell'array dei letti, c'è un messaggio nuovo!
+                            if (uid != null && !readBy.contains(uid)) {
+                              unread++;
+                            }
+                          }
+                        }
+                      }
+                      return Badge(
+                        isLabelVisible: unread > 0,
+                        label: Text(unread.toString()),
+                        child: const Icon(Icons.chat_bubble_outline),
+                      );
+                    },
+                  ),
+                  label: 'Chat',
+                ),
+                const BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: 'Profile'),
               ],
             ),
           );

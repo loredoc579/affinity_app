@@ -7,6 +7,10 @@ import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+import '../screens/chat_screen.dart'; // Per poter aprire la schermata
 
 /// Gestisce TUTTO ciò che riguarda le notifiche su Android.
 /// - richiesta permessi
@@ -98,20 +102,90 @@ class AndroidNotifications {
       debugPrint('📩 Notification opened');
       _handleNavigation(navigatorKey, message.data);
     });
+
+    // 6️⃣ NOVITÀ: Genera il token e salvalo nel database per i nuovi utenti
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        final String? token = await FirebaseMessaging.instance.getToken();
+        
+        if (token != null) {
+          debugPrint('📲 Token generato: $token');
+          await FirebaseFirestore.instance.collection('tokens').doc(token).set({
+            'uid': uid,
+            'platform': 'android',
+            'type': 'fcm',
+            'createdAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        }
+
+        // Se il token dovesse cambiare in futuro, lo aggiorniamo
+        FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+           await FirebaseFirestore.instance.collection('tokens').doc(newToken).set({
+            'uid': uid,
+            'platform': 'android',
+            'type': 'fcm',
+            'createdAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ Errore salvataggio token FCM: $e');
+    }
   }
 
-  /// Gestisce la navigazione in base al payload
-  static void _handleNavigation(
+/// Gestisce la navigazione in base al payload
+  static Future<void> _handleNavigation(
     GlobalKey<NavigatorState> navigatorKey,
     Map<String, dynamic> data,
-  ) {
-    if (data['type'] == 'new_chat' && data['chatId'] != null) {
-      navigatorKey.currentState?.pushNamed(
-        '/chat',
-        arguments: {
-          'chatId': data['chatId'],
-        },
-      );
+  ) async {
+    final type = data['type'];
+    final chatId = data['chatId'];
+
+    // Accettiamo sia i nuovi match che i nuovi messaggi!
+    if ((type == 'new_chat' || type == 'new_message') && chatId != null) {
+      
+      final context = navigatorKey.currentContext;
+      if (context == null) return;
+
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) return;
+
+      try {
+        // 1. Chiediamo al volo a Firebase: "Chi c'è in questa chat?"
+        final chatDoc = await FirebaseFirestore.instance.collection('chats').doc(chatId).get();
+        if (!chatDoc.exists) return;
+
+        final participants = List<String>.from(chatDoc.data()?['participants'] ?? []);
+        final otherUserId = participants.firstWhere((id) => id != currentUser.uid, orElse: () => '');
+        if (otherUserId.isEmpty) return;
+
+        // 2. Chiediamo: "Come si chiama e che foto ha l'altro utente?"
+        final userDoc = await FirebaseFirestore.instance.collection('users').doc(otherUserId).get();
+        final userData = userDoc.data() ?? {};
+        final name = userData['name'] as String? ?? 'Utente';
+        
+        final rawPhotos = userData['photoUrls'] as List<dynamic>? ?? [];
+        final validPhotos = rawPhotos
+            .where((url) => url != null && url.toString().isNotEmpty)
+            .map((url) => url.toString())
+            .toList();
+        final photoUrl = validPhotos.isNotEmpty ? validPhotos.first : '';
+
+        // 3. BOOM! Entriamo direttamente nella chat con tutti i dati corretti!
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ChatScreen(
+              chatId: chatId,
+              otherUserId: otherUserId,
+              otherUserName: name,
+              otherUserPhotoUrl: photoUrl,
+            ),
+          ),
+        );
+      } catch (e) {
+        debugPrint('❌ Errore durante l\'apertura della chat da notifica: $e');
+      }
     }
   }
 }

@@ -4,6 +4,7 @@
 import {getProfiles} from "./getProfiles";
 // Importa il trigger Firestore
 import {onChatCreated} from "./onChatCreated";
+import {onMessageCreated} from "./onMessageCreated";
 
 // Aggiungi qui altri import di trigger o callable che hai definito
 
@@ -11,4 +12,5 @@ import {onChatCreated} from "./onChatCreated";
 export {
   getProfiles,
   onChatCreated,
+  onMessageCreated,
 };

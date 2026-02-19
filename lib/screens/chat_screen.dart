@@ -36,6 +36,13 @@ class _ChatScreenState extends State<ChatScreen> {
         .ref('status/${widget.otherUserId}/connections');
     _lastChangedRef = FirebaseDatabase.instance
         .ref('status/${widget.otherUserId}/last_changed');
+
+    final myUid = FirebaseAuth.instance.currentUser?.uid;
+    if (myUid != null) {
+      FirebaseFirestore.instance.collection('chats').doc(widget.chatId).update({
+        'readBy': FieldValue.arrayUnion([myUid])
+      });
+    }
   }
 
   void _sendMessage() {
@@ -63,6 +70,7 @@ class _ChatScreenState extends State<ChatScreen> {
         .update({
       'lastMessage': text,
       'lastUpdated': now,
+      'readBy': [currentUid], // Segna come letto per chi invia il messaggio
     });
 
     _textController.clear();
@@ -73,11 +81,20 @@ class _ChatScreenState extends State<ChatScreen> {
       stream: _connectionsRef.onValue,
       builder: (context, snap) {
         final raw = snap.data?.snapshot.value;
-        final map = (raw is Map) ? raw.cast<String, dynamic>() : <String, dynamic>{};
-        final online = map.isNotEmpty;
+        
+        // Accettiamo Mappe, Booleani o Testo senza crashare
+        bool online = false;
+        if (raw is Map) {
+          online = raw.isNotEmpty;
+        } else if (raw is bool) {
+          online = raw; 
+        } else if (raw != null) {
+          online = true;
+        }
+
         if (online) {
           return const Text('Online',
-              style: TextStyle(fontSize: 12, color: Colors.green));
+              style: TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.bold));
         } else {
           return StreamBuilder<DatabaseEvent>(
             stream: _lastChangedRef.onValue,
@@ -88,9 +105,14 @@ class _ChatScreenState extends State<ChatScreen> {
                     style: TextStyle(fontSize: 12, color: Colors.grey));
               }
               final lastSeen = DateTime.fromMillisecondsSinceEpoch(ts);
-              final formatted =
-                  TimeOfDay.fromDateTime(lastSeen).format(context);
-              return Text('Ultimo accesso: $formatted',
+              final formattedTime = TimeOfDay.fromDateTime(lastSeen).format(context);
+              
+              // Calcoliamo se l'ultimo accesso è stato "Oggi" o giorni fa
+              final today = DateTime.now();
+              final isToday = lastSeen.year == today.year && lastSeen.month == today.month && lastSeen.day == today.day;
+              final dateText = isToday ? 'Oggi alle $formattedTime' : '${lastSeen.day}/${lastSeen.month} alle $formattedTime';
+
+              return Text('Ultimo accesso: $dateText',
                   style: const TextStyle(fontSize: 12, color: Colors.grey));
             },
           );
@@ -137,6 +159,19 @@ class _ChatScreenState extends State<ChatScreen> {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
+
+                // Se arrivano nuovi dati mentre ho la chat aperta, la segno subito come letta!
+                if (snapshot.hasData) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    final myUid = FirebaseAuth.instance.currentUser?.uid;
+                    if (myUid != null) {
+                      FirebaseFirestore.instance.collection('chats').doc(widget.chatId).update({
+                        'readBy': FieldValue.arrayUnion([myUid])
+                      }).catchError((_) {}); // Ignoriamo se la chat si sta chiudendo
+                    }
+                  });
+                }
+
                 final docs = snapshot.data?.docs ?? [];
                 return ListView.builder(
                   reverse: true,

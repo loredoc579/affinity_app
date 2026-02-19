@@ -9,7 +9,7 @@ import 'chat_screen.dart'; // ← import della ChatScreen
 class ChatListScreen extends StatelessWidget {
   const ChatListScreen({Key? key}) : super(key: key);
 
-  @override
+@override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -20,8 +20,7 @@ class ChatListScreen extends StatelessWidget {
     final chatStream = FirebaseFirestore.instance
         .collection('chats')
         .where('participants', arrayContains: uid)
-        .where('deleted', isEqualTo: false)
-        .orderBy('lastUpdated', descending: true)
+        .orderBy('timestamp', descending: true) 
         .snapshots();
 
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -34,7 +33,10 @@ class ChatListScreen extends StatelessWidget {
           return Center(child: Text('Errore: ${snap.error}'));
         }
 
-        final docs = snap.data!.docs;
+        final docs = snap.data!.docs.where((doc) {
+          return doc.data()['deleted'] != true;
+        }).toList();
+
         if (docs.isEmpty) {
           return const Center(child: Text('Nessuna chat ancora'));
         }
@@ -42,6 +44,7 @@ class ChatListScreen extends StatelessWidget {
         return ListView.builder(
           itemCount: docs.length,
           itemBuilder: (ctx, i) {
+
             final chatDoc = docs[i];
             final data = chatDoc.data();
 
@@ -108,9 +111,13 @@ class ChatListScreen extends StatelessWidget {
                   // Dati utente caricati
                   final udata = userSnap.data!.data()!;
                   final name = udata['name'] as String? ?? 'Utente';
-                  final photos =
-                      List<String>.from(udata['photoUrls'] as List? ?? []);
-                  final photoUrl = photos.isNotEmpty ? photos.first : '';
+                  final rawPhotos = udata['photoUrls'] as List<dynamic>? ?? [];
+                  final validPhotos = rawPhotos
+                      .where((url) => url != null && url.toString().isNotEmpty)
+                      .map((url) => url.toString())
+                      .toList();
+                  
+                  final photoUrl = validPhotos.isNotEmpty ? validPhotos.first : '';
 
                   return ListTile(
                     leading: SafeAvatar(url: photoUrl, radius: 20),
