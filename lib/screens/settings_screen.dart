@@ -116,6 +116,69 @@ class SettingsScreen extends StatelessWidget {
     }
   }
 
+  // --- FUNZIONE: HARD RESET (BOMBA NUCLEARE PER TEST) ---
+  Future<void> _hardResetDev(BuildContext context) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    // Chiediamo conferma perché è un'azione distruttiva
+    final conferma = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('💣 Reset Totale'),
+        content: const Text('Vuoi eliminare FISICAMENTE tutte le tue chat e i tuoi swipe? Utile per testare di nuovo i Match da zero.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annulla')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true), 
+            child: const Text('DISTRUGGI', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))
+          ),
+        ],
+      ),
+    );
+
+    if (conferma != true) return;
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('💣 Distruzione in corso...')));
+    }
+
+    try {
+      final db = FirebaseFirestore.instance;
+      final batch = db.batch();
+
+      // 1. Troviamo ed eliminiamo TUTTE le chat in cui sei coinvolto
+      final chatsSnap = await db.collection('chats').where('participants', arrayContains: uid).get();
+      for (var doc in chatsSnap.docs) {
+        // Entriamo nella sottocollezione e distruggiamo i messaggi
+        final messagesSnap = await doc.reference.collection('messages').get();
+        for (var msgDoc in messagesSnap.docs) {
+          batch.delete(msgDoc.reference);
+        }
+        // Infine distruggiamo il contenitore della chat
+        batch.delete(doc.reference);
+      }
+
+      // 2. Troviamo ed eliminiamo TUTTI i tuoi swipe
+      final swipesSnap = await db.collection('swipes').where('from', isEqualTo: uid).get();
+      for (var doc in swipesSnap.docs) {
+        batch.delete(doc.reference);
+      }
+
+      await batch.commit();
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✅ Hard Reset completato! Riavvia l\'app.'), backgroundColor: Colors.green),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ Errore: $e')));
+      }
+    }
+  }
+
   // --- FUNZIONE: SVUOTA CACHE MANUALE ---
   Future<void> _svuotaCacheManuale(BuildContext context) async {
     await DefaultCacheManager().emptyCache();
@@ -162,6 +225,13 @@ class SettingsScreen extends StatelessWidget {
                   title: const Text('Svuota Cache Immagini', style: TextStyle(color: Colors.orange)),
                   subtitle: const Text('Usa se il tuo avatar non si aggiorna', style: TextStyle(color: Colors.orange, fontSize: 12)),
                   onTap: () => _svuotaCacheManuale(context),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.warning_amber_rounded, color: Colors.purple),
+                  title: const Text('Hard Reset (Chat + Swipe)', style: TextStyle(color: Colors.purple, fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Elimina fisicamente tutto per ri-testare', style: TextStyle(color: Colors.purple, fontSize: 12)),
+                  onTap: () => _hardResetDev(context),
                 ),
               ],
             ),

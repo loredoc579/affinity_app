@@ -47,7 +47,7 @@ class SwipeBloc extends Bloc<SwipeEvent, SwipeState> {
     emit(SwipeLoading());
 
     debugPrint('👉 [2. BLOC] Ricevuto evento LoadProfiles. Filtri contenuti: ${event.uiFilters}');
-    
+
     try {
       final uid = _auth.currentUser?.uid;
       if (uid == null) {
@@ -72,19 +72,26 @@ class SwipeBloc extends Bloc<SwipeEvent, SwipeState> {
     }
   }
 
-  // Logica unificata per Like e Superlike
+// Logica unificata per Like e Superlike
   Future<void> _handleSwipe(String targetUserId, {required bool isSuper, required Emitter<SwipeState> emit}) async {
     try {
       final myUid = _auth.currentUser!.uid;
 
-      // 1. Scriviamo lo swipe su Firebase USANDO IL SERVICE CORRETTO
+      // 1. 🆕 SALVIAMO LE CARTE ATTUALI PRIMA DEL MATCH
+      // Ci serve per non far sparire la schermata dietro l'animazione
+      List<UserModel> currentUsers = [];
+      if (state is SwipeLoaded) {
+        currentUsers = (state as SwipeLoaded).users;
+      }
+
+      // 2. Scriviamo lo swipe su Firebase USANDO IL SERVICE CORRETTO
       if (isSuper) {
         await _service.sendSuperlike(targetUserId);
       } else {
         await _service.sendLike(targetUserId);
       }
 
-      // 2. Controlliamo se c'è un MATCH
+      // 3. Controlliamo se c'è un MATCH
       final swipesCol = FirebaseFirestore.instance.collection('swipes');
       final matchQuery = await swipesCol
           .where('from', isEqualTo: targetUserId)
@@ -96,12 +103,17 @@ class SwipeBloc extends Bloc<SwipeEvent, SwipeState> {
       if (matchQuery.docs.isNotEmpty) {
         debugPrint("🎉 IT'S A MATCH!");
         
-        // 3. Creiamo la chat room
+        // 4. Creiamo la chat room
         final chatId = _getChatId(myUid, targetUserId);
         await _createChatIfNeeded(chatId, myUid, targetUserId);
         
-        // 4. Emettiamo lo stato di Match
+        // 5. Emettiamo lo stato di Match (Il Listener lo cattura e apre la schermata!)
         emit(SwipeMatched(matchId: targetUserId, chatRoomId: chatId));
+
+        // 6. 🆕 RIPRISTINIAMO SUBITO LO STATO PRECEDENTE!
+        // (Il Builder lo cattura e mantiene le carte visibili sullo sfondo, 
+        // così quando torni indietro non trovi la schermata bianca)
+        emit(SwipeLoaded(users: currentUsers));
       }
 
     } catch (e) {
@@ -122,9 +134,10 @@ class SwipeBloc extends Bloc<SwipeEvent, SwipeState> {
     if (!doc.exists) {
       await chatRef.set({
         'participants': [uid1, uid2],
+        'createdBy': uid1,
         'lastMessage': "Nuovo Match! Salutatevi 👋",
         'timestamp': FieldValue.serverTimestamp(),
-        'readBy': [],
+        'readBy': [uid1, uid2],
       });
     }
   }

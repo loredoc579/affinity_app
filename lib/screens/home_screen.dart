@@ -21,6 +21,7 @@ import '../main.dart';
 import 'chat_list_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart'; 
+import 'match_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -54,6 +55,65 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                        ?? '';
         if (_avatarUrl != newAvatar) {
           setState(() => _avatarUrl = newAvatar); // Aggiorna la UI se la foto cambia!
+        }
+      }
+    });
+
+    // Ascoltiamo la creazione di NUOVE chat in tempo reale
+    FirebaseFirestore.instance
+        .collection('chats')
+        .where('participants', arrayContains: uid)
+        .snapshots()
+        .listen((snapshot) {
+      if (!mounted) return;
+      for (var change in snapshot.docChanges) {
+        // Se c'è un documento NUOVO aggiunto in questo istante
+        if (change.type == DocumentChangeType.added) {
+          final data = change.doc.data();
+          if (data == null) continue;
+
+          // Controlliamo che sia stato creato proprio negli ultimi 5 secondi
+          final timestamp = data['timestamp'] as Timestamp?;
+          if (timestamp != null && DateTime.now().difference(timestamp.toDate()).inSeconds < 5) {
+            
+            // Controlliamo se la schermata "MatchScreen" NON è già aperta
+            // (Questo impedisce il doppio avviso per l'Utente A)
+            bool isMatchScreenOpen = false;
+            Navigator.popUntil(context, (route) {
+              if (route.settings.name == 'MatchScreen' || route.runtimeType.toString() == 'PageRouteBuilder<dynamic>') {
+                isMatchScreenOpen = true;
+              }
+              return true; 
+            });
+
+            if (!isMatchScreenOpen) {
+              // Siamo l'Utente B! Mostriamo un bellissimo banner In-App
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Row(
+                    children: const [
+                      Icon(Icons.favorite, color: Colors.white),
+                      SizedBox(width: 12),
+                      Expanded(child: Text("Hai un nuovo Match! Corri a scrivergli.", style: TextStyle(fontWeight: FontWeight.bold))),
+                    ],
+                  ),
+                  backgroundColor: Colors.pinkAccent,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  margin: const EdgeInsets.only(bottom: 20, left: 20, right: 20),
+                  duration: const Duration(seconds: 4),
+                  action: SnackBarAction(
+                    label: 'Vedi',
+                    textColor: Colors.white,
+                    onPressed: () {
+                      // Se clicca, lo portiamo alla tab delle chat (Indice 1)
+                      setState(() => _navIndex = 1);
+                    },
+                  ),
+                ),
+              );
+            }
+          }
         }
       }
     });
@@ -189,155 +249,185 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       });
     }
 
-    return BlocListener<NetworkCubit, NetworkStatus>(
+return BlocListener<NetworkCubit, NetworkStatus>(
       listenWhen: (prev, curr) => prev == NetworkStatus.offline && curr == NetworkStatus.online,
       listener: (context, _) {
          final uid = FirebaseAuth.instance.currentUser!.uid;
          FilterManager.loadAndDispatch(context, uid, () {}); // <-- CARICA I FILTRI E SPARA!
       },
-      child: BlocBuilder<SwipeBloc, SwipeState>(
-        builder: (context, state) {
-          
-          if (state is SwipeError) {
+      // --- ABBIAMO AGGIUNTO QUESTO BLOCLISTENER PER IL MATCH ---
+        child: BlocListener<SwipeBloc, SwipeState>(
+          listener: (context, state) async {
+            if (state is SwipeMatched) {
+              // Quando scatta il match, prendiamo i dati per mostrare le foto
+              final myUid = FirebaseAuth.instance.currentUser!.uid;
+              final otherDoc = await FirebaseFirestore.instance.collection('users').doc(state.matchId).get();
+              final myDoc = await FirebaseFirestore.instance.collection('users').doc(myUid).get();
+              
+              if (otherDoc.exists && myDoc.exists && context.mounted) {
+                final otherData = otherDoc.data()!;
+                final myData = myDoc.data()!;
+                
+                // Mostra la schermata Match trasparente!
+                Navigator.of(context).push(
+                  PageRouteBuilder(
+                    opaque: false, 
+                    pageBuilder: (BuildContext context, _, __) => MatchScreen(
+                      myPhotoUrl: myData['photoUrl'] ?? '',
+                      otherPhotoUrl: otherData['photoUrl'] ?? '',
+                      otherName: otherData['name'] ?? 'Utente',
+                      otherUserId: state.matchId,
+                      chatId: state.chatRoomId,
+                    ),
+                  ),
+                );
+              }
+            }
+          },
+        child: BlocBuilder<SwipeBloc, SwipeState>(
+          builder: (context, state) {
+            
+            if (state is SwipeError) {
+              return Scaffold(
+                // AGGIUNGIAMO LA APPBAR CON IL TASTO LOGOUT PER LE EMERGENZE!
+                appBar: AppBar(
+                  title: const Text('Oops!', style: TextStyle(color: Colors.black87)),
+                  backgroundColor: Colors.white,
+                  elevation: 0,
+                  actions: [
+                    IconButton(
+                      icon: const Icon(Icons.logout, color: Colors.red),
+                      onPressed: () async {
+                        await PresenceService().goOffline();
+                        await FirebaseAuth.instance.signOut();
+                        if (!mounted) return;
+                        Navigator.of(context).pushNamedAndRemoveUntil('/login', (_) => false);
+                      },
+                    ),
+                  ],
+                ),
+                body: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(state.message, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: () {
+                          final uid = FirebaseAuth.instance.currentUser?.uid;
+                          if (uid != null) {
+                            FilterManager.loadAndDispatch(context, uid, () {});
+                          }
+                        }, 
+                        child: const Text("Riprova")
+                      )
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            if (state is SwipeInitial || state is SwipeLoading) {
+              return const Scaffold(
+                body: Center(child: HeartProgressIndicator(size: 60)),
+              );
+            }
+
+            final pages = <Widget>[
+              HomeContent(
+                avatarUrl: _avatarUrl!,
+                position: _position!,
+                onShowFilters: _showFilters,
+                onNavTap: _onNavTap,
+                navIndex: _navIndex,
+              ),
+              const ChatListScreen(),
+              const ProfileScreen(),
+            ];
+
             return Scaffold(
-              // AGGIUNGIAMO LA APPBAR CON IL TASTO LOGOUT PER LE EMERGENZE!
               appBar: AppBar(
-                title: const Text('Oops!', style: TextStyle(color: Colors.black87)),
+                // --- ECCO IL PULSANTE AGGIUNTO IN ALTO A SINISTRA ---
+                leading: IconButton(
+                  icon: const Icon(Icons.settings, color: Colors.black87),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                    );
+                  },
+                ),
+                // ----------------------------------------------------
+                title: const Text('Affinity', style: TextStyle(color: Colors.pink, fontWeight: FontWeight.bold)),
+                centerTitle: true,
                 backgroundColor: Colors.white,
                 elevation: 0,
                 actions: [
-                  IconButton(
-                    icon: const Icon(Icons.logout, color: Colors.red),
-                    onPressed: () async {
-                      await PresenceService().goOffline();
-                      await FirebaseAuth.instance.signOut();
-                      if (!mounted) return;
-                      Navigator.of(context).pushNamedAndRemoveUntil('/login', (_) => false);
-                    },
-                  ),
+                  if (_navIndex == 0)
+                    IconButton(
+                      icon: const Icon(Icons.tune, color: Colors.black87),
+                      onPressed: _showFilters,
+                    ),
+                  if (_navIndex == 2)
+                    IconButton(
+                      icon: const Icon(Icons.logout, color: Colors.black87),
+                      onPressed: () async {
+                        await PresenceService().goOffline();
+                        await FirebaseAuth.instance.signOut();
+                        if (!mounted) return;
+                        Navigator.of(context).pushNamedAndRemoveUntil('/login', (_) => false);
+                      },
+                    ),
                 ],
               ),
-              body: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(state.message, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: () {
-                        final uid = FirebaseAuth.instance.currentUser?.uid;
-                        if (uid != null) {
-                          FilterManager.loadAndDispatch(context, uid, () {});
-                        }
-                      }, 
-                      child: const Text("Riprova")
-                    )
-                  ],
-                ),
-              ),
-            );
-          }
-
-          if (state is SwipeInitial || state is SwipeLoading) {
-            return const Scaffold(
-              body: Center(child: HeartProgressIndicator(size: 60)),
-            );
-          }
-
-          final pages = <Widget>[
-            HomeContent(
-              avatarUrl: _avatarUrl!,
-              position: _position!,
-              onShowFilters: _showFilters,
-              onNavTap: _onNavTap,
-              navIndex: _navIndex,
-            ),
-            const ChatListScreen(),
-            const ProfileScreen(),
-          ];
-
-          return Scaffold(
-            appBar: AppBar(
-              // --- ECCO IL PULSANTE AGGIUNTO IN ALTO A SINISTRA ---
-              leading: IconButton(
-                icon: const Icon(Icons.settings, color: Colors.black87),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const SettingsScreen()),
-                  );
-                },
-              ),
-              // ----------------------------------------------------
-              title: const Text('Affinity', style: TextStyle(color: Colors.pink, fontWeight: FontWeight.bold)),
-              centerTitle: true,
-              backgroundColor: Colors.white,
-              elevation: 0,
-              actions: [
-                if (_navIndex == 0)
-                  IconButton(
-                    icon: const Icon(Icons.tune, color: Colors.black87),
-                    onPressed: _showFilters,
-                  ),
-                if (_navIndex == 2)
-                  IconButton(
-                    icon: const Icon(Icons.logout, color: Colors.black87),
-                    onPressed: () async {
-                      await PresenceService().goOffline();
-                      await FirebaseAuth.instance.signOut();
-                      if (!mounted) return;
-                      Navigator.of(context).pushNamedAndRemoveUntil('/login', (_) => false);
-                    },
-                  ),
-              ],
-            ),
-            body: IndexedStack(index: _navIndex, children: pages),
-            bottomNavigationBar: BottomNavigationBar(
-              currentIndex: _navIndex,
-              onTap: _onNavTap,
-              showSelectedLabels: false,
-              showUnselectedLabels: false,
-              selectedItemColor: Colors.pink,
-              unselectedItemColor: Colors.grey,
-              items: [
-                const BottomNavigationBarItem(icon: Icon(Icons.style), label: 'Swipe'),
-                BottomNavigationBarItem(
-                  icon: StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance.collection('chats')
-                        .where('participants', arrayContains: FirebaseAuth.instance.currentUser?.uid)
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      int unread = 0;
-                      if (snapshot.hasData) {
-                        final uid = FirebaseAuth.instance.currentUser?.uid;
-                        for (var doc in snapshot.data!.docs) {
-                          final data = doc.data() as Map<String, dynamic>;
-                          
-                          final isDeleted = data['deleted'] == true;
-                          
-                          if (!isDeleted) {
-                            final readBy = List<String>.from(data['readBy'] as List<dynamic>? ?? []);
-                            // Se il mio ID non è nell'array dei letti, c'è un messaggio nuovo!
-                            if (uid != null && !readBy.contains(uid)) {
-                              unread++;
+              body: IndexedStack(index: _navIndex, children: pages),
+              bottomNavigationBar: BottomNavigationBar(
+                currentIndex: _navIndex,
+                onTap: _onNavTap,
+                showSelectedLabels: false,
+                showUnselectedLabels: false,
+                selectedItemColor: Colors.pink,
+                unselectedItemColor: Colors.grey,
+                items: [
+                  const BottomNavigationBarItem(icon: Icon(Icons.style), label: 'Swipe'),
+                  BottomNavigationBarItem(
+                    icon: StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance.collection('chats')
+                          .where('participants', arrayContains: FirebaseAuth.instance.currentUser?.uid)
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        int unread = 0;
+                        if (snapshot.hasData) {
+                          final uid = FirebaseAuth.instance.currentUser?.uid;
+                          for (var doc in snapshot.data!.docs) {
+                            final data = doc.data() as Map<String, dynamic>;
+                            
+                            final isDeleted = data['deleted'] == true;
+                            
+                            if (!isDeleted) {
+                              final readBy = List<String>.from(data['readBy'] as List<dynamic>? ?? []);
+                              // Se il mio ID non è nell'array dei letti, c'è un messaggio nuovo!
+                              if (uid != null && !readBy.contains(uid)) {
+                                unread++;
+                              }
                             }
                           }
                         }
-                      }
-                      return Badge(
-                        isLabelVisible: unread > 0,
-                        label: Text(unread.toString()),
-                        child: const Icon(Icons.chat_bubble_outline),
-                      );
-                    },
+                        return Badge(
+                          isLabelVisible: unread > 0,
+                          label: Text(unread.toString()),
+                          child: const Icon(Icons.chat_bubble_outline),
+                        );
+                      },
+                    ),
+                    label: 'Chat',
                   ),
-                  label: 'Chat',
-                ),
-                const BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: 'Profile'),
-              ],
-            ),
-          );
-        },
+                  const BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: 'Profile'),
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }

@@ -106,27 +106,6 @@ function buildBaseQuery(filters?: UIFilters): admin.firestore.Query {
 }
 
 /**
- * Applica paginazione alla query
- * @param {admin.firestore.Query} q La query Firestore da paginare
- * @param {string} [cursor] Il cursore per la paginazione (document ID)
- * @param {number} [pageSize] Numero di risultati per pagina
- * @return {admin.firestore.Query} La query con la paginazione applicata
- */
-function applyPagination(
-  q: admin.firestore.Query,
-  cursor?: string,
-  pageSize?: number
-): admin.firestore.Query {
-  console.log("🔍 applyPagination cursor, pageSize:", cursor, pageSize);
-  const size = pageSize && pageSize > 0 ? pageSize : DEFAULT_PAGE_SIZE;
-  let query = q;
-  if (cursor) {
-    query = query.startAfter(cursor);
-  }
-  return query.limit(size);
-}
-
-/**
  * Filtra i documenti Firestore escludendo ID e applicando il filtro distanza
  * @param {admin.firestore.QueryDocumentSnapshot[]} docs
  *   Array di documenti Firestore da filtrare
@@ -214,7 +193,10 @@ export const getProfiles = onCall<Req>(async (req) => {
 
   // 3) query base + paginazione
   let q = buildBaseQuery(uiFilters);
-  q = applyPagination(q, cursor, pageSize);
+  if (cursor) {
+    q = q.startAfter(cursor);
+  }
+  q = q.limit(150);
 
   // 4) esecuzione query
   let snap;
@@ -235,16 +217,11 @@ export const getProfiles = onCall<Req>(async (req) => {
   const ageFilteredDocs = rawDocs.filter((doc) => {
     const minA = Number(uiFilters?.minAge);
     const maxA = Number(uiFilters?.maxAge);
-
-    // Se non ci sono i filtri di Flutter, facciamo passare
     if (isNaN(minA) || isNaN(maxA)) return true;
 
     const ageRaw = doc.get("age");
     const ageNum = typeof ageRaw === "number" ?
-      ageRaw :
-      parseInt(String(ageRaw), 10);
-
-    // Se l'utente nel DB ha un'età vuota o corrotta, non lo mostriamo
+      ageRaw : parseInt(String(ageRaw), 10);
     if (isNaN(ageNum)) return false;
 
     return ageNum >= minA && ageNum <= maxA;
@@ -252,22 +229,35 @@ export const getProfiles = onCall<Req>(async (req) => {
   console.log("🗂️ Documenti dopo filtro età:", ageFilteredDocs.length);
 
   // 5b) Filtro distanza + ID esclusi
-  const profiles = filterByDistanceAndExclusions(
+  const validProfiles = filterByDistanceAndExclusions(
     ageFilteredDocs,
     excluded,
     myLat,
     myLng,
     uiFilters?.maxDistance
   );
-  console.log("✅ Profili finali restituiti:", profiles.length);
+
+  // 5) Tagliamo i risultati in base al pageSize richiesto dall'app
+  // (es. 10 o 30)
+  const finalPageSize = pageSize && pageSize > 0 ? pageSize : DEFAULT_PAGE_SIZE;
+  const profilesToReturn = validProfiles.slice(0, finalPageSize);
+  console.log("✅ Profili finali restituiti:", profilesToReturn.length);
 
   // 6) cursore successivo basato sui rawDocs per stabilità
-  const nextCursor =
-    snap.size === (pageSize || DEFAULT_PAGE_SIZE) ?
-      snap.docs[snap.docs.length - 1].id :
-      null;
+  let nextCursor = null;
+  if (profilesToReturn.length > 0) {
+    const lastReturnedUid = profilesToReturn[profilesToReturn.length - 1].uid;
+    const lastReturnedIndex = rawDocs.findIndex(
+      (d) => d.id === lastReturnedUid
+    );
 
-  return {profiles, nextCursor};
+    // Se non siamo arrivati alla fine assoluta dei rawDocs, passiamo il cursore
+    if (lastReturnedIndex !== -1 && lastReturnedIndex < rawDocs.length - 1) {
+      nextCursor = rawDocs[lastReturnedIndex].id;
+    }
+  }
+
+  return {profiles: profilesToReturn, nextCursor};
 });
 
 
@@ -296,8 +286,7 @@ async function computeExcludedIds(me: string): Promise<Set<string>> {
     const other = parts.find((id) => id !== me);
     if (!other) continue;
     const isDel = d.get("deleted") === true;
-    const delTs = (d.get("deletedDate") as Timestamp)?.toDate();
-    if (isDel && delTs && delTs >= startOfDay) {
+    if (isDel) {
       black.add(other);
     } else {
       matched.add(other);

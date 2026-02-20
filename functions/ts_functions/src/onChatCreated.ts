@@ -25,7 +25,12 @@ export const onChatCreated = onDocumentCreated(
     }
 
     // Casting esplicito del documento a Chat
-    const chat = snap.data() as Chat;
+    const chat = snap.data() as Chat & { createdBy?: string };
+
+    const receivers = chat.participants.filter((id) => id !== chat.createdBy);
+
+    if (receivers.length === 0) return;
+
     if (!chat || !Array.isArray(chat.participants)) {
       console.log("Missing or invalid participants:", chat);
       return;
@@ -38,7 +43,7 @@ export const onChatCreated = onDocumentCreated(
     const tokensSnap = await admin
       .firestore()
       .collection("tokens")
-      .where("uid", "in", chat.participants)
+      .where("uid", "in", receivers)
       .where("tags", "array-contains", "chat")
       .get();
 

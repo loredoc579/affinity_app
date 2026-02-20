@@ -30,6 +30,20 @@ export const onMessageCreated = onDocumentCreated(
     const receiverId = participants.find((id: string) => id !== senderId);
     if (!receiverId) return;
 
+    // --- NUOVO CONTROLLO: L'UTENTE È GIÀ NELLA CHAT? ---
+    const activeChatSnap = await admin
+      .database()
+      .ref(`status/${receiverId}/activeChat`)
+      .once("value");
+    const activeChat = activeChatSnap.val();
+    if (activeChat === chatId) {
+      console.log(
+        `L'utente ${receiverId} è già nella chat ${chatId}. ` +
+        "Salto la notifica push."
+      );
+      return; // Blocchiamo la notifica alla radice!
+    }
+
     // Recupera anche il nome del mittente per un bel popup
     const senderDoc = await admin
       .firestore()

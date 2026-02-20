@@ -52,7 +52,7 @@ class _FilterSheetState extends State<FilterSheet> {
           RangeSlider(
             values: _localAge,
             min: 18,
-            max: 100,
+            max: 70,
             divisions: 82,
             onChanged: (r) => setState(() {
               _localAge = r;
@@ -66,7 +66,7 @@ class _FilterSheetState extends State<FilterSheet> {
           Slider(
             value: _localDistance,
             min: 1,
-            max: 800,
+            max: 300,
             divisions: 799,
             onChanged: (d) => setState(() {
               _localDistance = d;

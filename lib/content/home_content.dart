@@ -93,21 +93,6 @@ class _HomeContentState extends State<HomeContent> with SingleTickerProviderStat
   Widget build(BuildContext context) {
     return BlocConsumer<SwipeBloc, SwipeState>(
       listener: (context, state) {
-        if (state is SwipeMatched) {
-          showDialog(
-            context: context,
-            builder: (_) => AlertDialog(
-              title: const Text('È match! 🎉'),
-              content: const Text('Puoi iniziare a chattare.'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('OK'),
-                ),
-              ],
-            ),
-          );
-        }
       },
       builder: (context, state) {
         if (state is SwipeInitial || state is SwipeLoading) {
