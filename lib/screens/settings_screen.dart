@@ -1,98 +1,170 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart'; // <-- Nuovo import per la cache
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
-  // Lo script magico per popolare il database
+  // --- 1. SET FOTOGRAFICI HD (Ampliati e verificati) ---
+  static const List<List<String>> _profiliUomoHD = [
+    [
+      'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?q=80&w=800&auto=format&fit=crop',
+      'https://images.unsplash.com/photo-1537511446984-935f663eb1f4?q=80&w=800&auto=format&fit=crop',
+    ],
+    [
+      'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?q=80&w=800&auto=format&fit=crop',
+      'https://images.unsplash.com/photo-1488161628813-04466f872528?q=80&w=800&auto=format&fit=crop',
+    ],
+    [
+      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=800&auto=format&fit=crop',
+      'https://images.unsplash.com/photo-1504222490345-c075b6008014?q=80&w=800&auto=format&fit=crop',
+    ],
+    [
+      'https://images.unsplash.com/photo-1480455624313-e29b44bbfde1?q=80&w=800&auto=format&fit=crop',
+      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=800&auto=format&fit=crop',
+    ],
+    [
+      'https://images.unsplash.com/photo-1504257432389-523431e11205?q=80&w=800&auto=format&fit=crop',
+      'https://images.unsplash.com/photo-1513956589380-bad6acb9b9d4?q=80&w=800&auto=format&fit=crop',
+    ]
+  ];
+
+  static const List<List<String>> _profiliDonnaHD = [
+    [
+      'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=800&auto=format&fit=crop',
+      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=800&auto=format&fit=crop',
+    ],
+    [
+      'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?q=80&w=800&auto=format&fit=crop',
+      'https://images.unsplash.com/photo-1501196354995-cbb51c65aaea?q=80&w=800&auto=format&fit=crop',
+    ],
+    [
+      'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?q=80&w=800&auto=format&fit=crop',
+      'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?q=80&w=800&auto=format&fit=crop',
+    ],
+    [
+      'https://images.unsplash.com/photo-1517365830460-955ce3ccd263?q=80&w=800&auto=format&fit=crop',
+      'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?q=80&w=800&auto=format&fit=crop',
+    ],
+    [
+      'https://images.unsplash.com/photo-1489424731084-a5d8b219a5bb?q=80&w=800&auto=format&fit=crop',
+      'https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=800&auto=format&fit=crop',
+    ]
+  ];
+
+  // --- FUNZIONE: POPOLA IMMAGINI HD ---
   Future<void> _ripopolaImmaginiDatabase(BuildContext context) async {
-    // Mostriamo un avviso di caricamento in basso
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('🔄 Aggiornamento database in corso...'), duration: Duration(seconds: 2)),
-    );
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('🔄 Aggiornamento in corso...')));
 
     try {
       final db = FirebaseFirestore.instance;
       final snapshot = await db.collection('users').get();
-
-      int countUomini = 1;
-      int countDonne = 1;
+      int countUomini = 0, countDonne = 0;
 
       for (var doc in snapshot.docs) {
+        if (doc.id == currentUid) continue; // Salta TE STESSO
+
         final data = doc.data();
-        final String gender = data['gender']?.toString().toLowerCase() ?? 'female';
-        
-        List<String> nuoveFoto = [];
-        
-        for (int i = 0; i < 3; i++) {
-          if (gender == 'male' || gender == 'uomo') {
-            nuoveFoto.add('https://randomuser.me/api/portraits/men/${(countUomini % 99) + i}.jpg');
-          } else {
-            nuoveFoto.add('https://randomuser.me/api/portraits/women/${(countDonne % 99) + i}.jpg');
-          }
-        }
+        final String rawGender = data['gender']?.toString().toLowerCase().trim() ?? 'female';
+        final bool isMale = (rawGender == 'male' || rawGender == 'uomo' || rawGender == 'm');
 
-        if (gender == 'male' || gender == 'uomo') {
-          countUomini += 3;
+        List<String> nuoveFoto;
+        if (isMale) {
+          nuoveFoto = _profiliUomoHD[countUomini % _profiliUomoHD.length];
+          countUomini++;
         } else {
-          countDonne += 3;
+          nuoveFoto = _profiliDonnaHD[countDonne % _profiliDonnaHD.length];
+          countDonne++;
         }
 
+        // AGGIORNAMENTO CORRETTO: Aggiorniamo SIA photoUrls che photoUrl!
         await db.collection('users').doc(doc.id).update({
-          'photoUrls': nuoveFoto,
-          'imageUrls': FieldValue.delete(), // Rimuoviamo il vecchio campo "imageUrls" se esiste
-          'uid': doc.id,
+          'photoUrl': nuoveFoto[0], // L'avatar principale (Risolve i quadrati bianchi!)
+          'photoUrls': nuoveFoto,   // L'array per il profilo
+          'imageUrls': FieldValue.delete(),
         });
       }
       
-      // Avviso di successo!
       if (context.mounted) {
+        // Obblighiamo la cache a svuotarsi per vedere i nuovi risultati subito!
+        await DefaultCacheManager().emptyCache();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Database aggiornato! Torna alla Home.'),
-            backgroundColor: Colors.green,
-          ),
+          const SnackBar(content: Text('✅ Foto HD impostate!'), backgroundColor: Colors.green),
         );
       }
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ Errore: $e'), backgroundColor: Colors.red),
-        );
-      }
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ Errore: $e')));
+    }
+  }
+
+  // --- FUNZIONE: AZZERA SWIPE ---
+  Future<void> _azzeraSwipe(BuildContext context) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final db = FirebaseFirestore.instance;
+      final swipesSnapshot = await db.collection('swipes').where('from', isEqualTo: uid).get();
+      final batch = db.batch();
+      for (var doc in swipesSnapshot.docs) { batch.delete(doc.reference); }
+      await batch.commit();
+
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Swipe azzerati!')));
+    } catch (e) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ Errore: $e')));
+    }
+  }
+
+  // --- FUNZIONE: SVUOTA CACHE MANUALE ---
+  Future<void> _svuotaCacheManuale(BuildContext context) async {
+    await DefaultCacheManager().emptyCache();
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('🧹 Cache immagini pulita! Ricarica le pagine.'), backgroundColor: Colors.orange),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Impostazioni'),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 0,
-      ),
+      appBar: AppBar(title: const Text('Impostazioni'), backgroundColor: Colors.white, foregroundColor: Colors.black, elevation: 0),
       body: ListView(
         children: [
-          const ListTile(
-            leading: Icon(Icons.person),
-            title: Text('Account'),
-            subtitle: Text('Gestisci il tuo profilo'),
-          ),
-          const ListTile(
-            leading: Icon(Icons.notifications),
-            title: Text('Notifiche'),
-            subtitle: Text('Preferenze messaggi e match'),
-          ),
-          const Divider(),
+          const ListTile(leading: Icon(Icons.person), title: Text('Account'), subtitle: Text('Gestisci il tuo profilo')),
+          const ListTile(leading: Icon(Icons.notifications), title: Text('Notifiche'), subtitle: Text('Preferenze messaggi e match')),
           
-          // LA NOSTRA VOCE "SEGRETA"
-          ListTile(
-            leading: const Icon(Icons.info_outline, color: Colors.grey),
-            title: const Text('Versione App', style: TextStyle(color: Colors.grey)),
-            subtitle: const Text('1.0.0 (Build 12)', style: TextStyle(color: Colors.grey)),
-            // onLongPress attiva la funzione segreta quando tieni premuto!
-            onLongPress: () => _ripopolaImmaginiDatabase(context),
+          // --- SEZIONE SVILUPPATORE ---
+          const Padding(
+            padding: EdgeInsets.only(top: 24, left: 16, bottom: 8),
+            child: Text('🛠️ MENU SVILUPPATORE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.2)),
+          ),
+          Container(
+            color: Colors.red.shade50,
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.hd, color: Colors.red),
+                  title: const Text('Applica Foto HD al DB', style: TextStyle(color: Colors.red)),
+                  subtitle: const Text('Risolve foto bianche (non tocca il tuo profilo)', style: TextStyle(color: Colors.red, fontSize: 12)),
+                  onTap: () => _ripopolaImmaginiDatabase(context),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.refresh, color: Colors.red),
+                  title: const Text('Azzera i miei Swipe', style: TextStyle(color: Colors.red)),
+                  onTap: () => _azzeraSwipe(context),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.cleaning_services, color: Colors.orange),
+                  title: const Text('Svuota Cache Immagini', style: TextStyle(color: Colors.orange)),
+                  subtitle: const Text('Usa se il tuo avatar non si aggiorna', style: TextStyle(color: Colors.orange, fontSize: 12)),
+                  onTap: () => _svuotaCacheManuale(context),
+                ),
+              ],
+            ),
           ),
         ],
       ),

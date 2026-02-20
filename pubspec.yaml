@@ -61,6 +61,7 @@ dependencies:
   cloud_functions: ^5.5.2
   connectivity_plus: ^6.1.4
   internet_connection_checker: ^3.0.1
+  flutter_cache_manager: ^3.4.1
 
 dev_dependencies:
   flutter_test:

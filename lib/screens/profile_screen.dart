@@ -12,6 +12,7 @@ import 'dart:typed_data';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import '../widgets/heart_progress_indicator.dart';
+import 'profile_preview_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -130,47 +131,100 @@ Future<void> loadProfile() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery);
     if (picked == null) return;
-    Uint8List bytes;
-    if (kIsWeb) {
-      bytes = await picked.readAsBytes();
-    } else {
-      final raw = await picked.readAsBytes();
-      bytes = await FlutterImageCompress.compressWithList(
-        raw,
-        minWidth: 512,
-        minHeight: 512,
-        quality: 80,
-        format: CompressFormat.jpeg,
-      );
+    
+    setState(() => isLoading = true);
+
+    try {
+      Uint8List bytes;
+      if (kIsWeb) {
+        bytes = await picked.readAsBytes();
+      } else {
+        final raw = await picked.readAsBytes();
+        bytes = await FlutterImageCompress.compressWithList(
+          raw,
+          minWidth: 512,
+          minHeight: 512,
+          quality: 80,
+          format: CompressFormat.jpeg,
+        );
+      }
+      
+      // 1. NOME UNIVOCO: Usiamo i millisecondi così le foto non si sovrascrivono mai!
+      final uniqueId = DateTime.now().millisecondsSinceEpoch;
+      final ref = FirebaseStorage.instance.ref().child('users/${user!.uid}/photo_$uniqueId.jpg');
+      
+      await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+      final newUrl = await ref.getDownloadURL();
+
+      // 2. SOSTITUZIONE: Se c'era già una foto, la cancelliamo dallo storage e dalla cache
+      if (photoUrls[index] != null) {
+        final oldUrl = photoUrls[index]!;
+        await CachedNetworkImageProvider(oldUrl).evict();
+        try {
+          await FirebaseStorage.instance.refFromURL(oldUrl).delete();
+        } catch (e) {
+          debugPrint("Il vecchio file era già stato rimosso");
+        }
+      }
+
+      setState(() => photoUrls[index] = newUrl);
+
+      // 3. AGGIORNAMENTO FIRESTORE
+      Map<String, dynamic> updates = {'photoUrls': photoUrls};
+      if (index == 0) updates['photoUrl'] = newUrl;
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user!.uid)
+          .set(updates, SetOptions(merge: true));
+          
+    } catch (e) {
+      debugPrint("Errore upload foto: $e");
+    } finally {
+      setState(() => isLoading = false);
     }
-    final ref = FirebaseStorage.instance
-        .ref()
-        .child('users/${user!.uid}/photo_$index.jpg');
-    await ref.putData(
-      bytes,
-      SettableMetadata(contentType: 'image/jpeg'),
-    );
-    final url = await ref.getDownloadURL();
-    setState(() => photoUrls[index] = url);
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user!.uid)
-        .set({'photoUrls': photoUrls}, SetOptions(merge: true));
   }
 
   Future<void> removeImage(int index) async {
     if (photoUrls[index] == null || user == null) return;
     setState(() => isLoading = true);
+    
     try {
-      final ref = FirebaseStorage.instance
-          .ref()
-          .child('users/${user!.uid}/photo_$index.jpg');
-      await ref.delete();
+      final urlToDelete = photoUrls[index]!;
+      
+      // 1. Svuota la cache e rimuovi la foto da Firebase Storage usando direttamente il link!
+      await CachedNetworkImageProvider(urlToDelete).evict();
+      try {
+        await FirebaseStorage.instance.refFromURL(urlToDelete).delete();
+      } catch(e) {
+        debugPrint("Foto assente sullo storage");
+      }
+      
       photoUrls[index] = null;
+
+      // 2. LA MAGIA: Compattiamo l'array! (Shifting)
+      // Prendiamo solo le foto valide rimaste e le spingiamo tutte verso sinistra
+      List<String> fotoValide = photoUrls.whereType<String>().toList();
+      
+      // Ricreiamo l'array vuoto da 9 posti e lo riempiamo in ordine
+      photoUrls = List<String?>.filled(9, null);
+      for (int i = 0; i < fotoValide.length; i++) {
+        photoUrls[i] = fotoValide[i];
+      }
+
+      // 3. Aggiorniamo Firestore
+      Map<String, dynamic> updates = {'photoUrls': photoUrls};
+      
+      // Aggiorniamo l'avatar. Se fotoValide è vuoto, metterà una stringa vuota ('')
+      updates['photoUrl'] = photoUrls[0] ?? '';
+
       await FirebaseFirestore.instance
           .collection('users')
           .doc(user!.uid)
-          .set({'photoUrls': photoUrls}, SetOptions(merge: true));
+          .set(updates, SetOptions(merge: true));
+          
+    } catch (e) {
+      debugPrint("Errore eliminazione foto: $e");
     } finally {
       setState(() => isLoading = false);
     }
@@ -364,6 +418,30 @@ Future<void> loadProfile() async {
             onPressed: saveProfile,
             child: const Text("Salva"),
           ),
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.remove_red_eye, color: Colors.pink),
+            label: const Text(
+              "Vedi come appari agli altri", 
+              style: TextStyle(color: Colors.pink)
+            ),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Colors.pink),
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24))
+            ),
+            onPressed: () {
+              if (user != null) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ProfilePreviewScreen(uid: user!.uid),
+                  ),
+                );
+              }
+            },
+          ),
+          const SizedBox(height: 24), // Spazio extra in fondo
         ],
       ),
     );

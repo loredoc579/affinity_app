@@ -71,15 +71,14 @@ class ChatListScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              child: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                future: FirebaseFirestore.instance
+              child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                stream: FirebaseFirestore.instance
                     .collection('users')
                     .doc(otherUid)
-                    .get(),
+                    .snapshots(), // <-- Ascolta in tempo reale!
                 builder: (ctx2, userSnap) {
                   // Loading dello user
-                  if (userSnap.connectionState ==
-                      ConnectionState.waiting) {
+                  if (userSnap.connectionState == ConnectionState.waiting) {
                     return const ListTile(
                       title: Text('Caricamento...'),
                     );
@@ -91,38 +90,21 @@ class ChatListScreen extends StatelessWidget {
                     return ListTile(
                       title: const Text('Utente sconosciuto'),
                       subtitle: Text(lastMessage),
-                      onTap: () {
-                        // Passo solo chatId, ma meglio non entrare qui
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ChatScreen(
-                              chatId: chatDoc.id,
-                              otherUserId: otherUid,
-                              otherUserName: 'Utente',
-                              otherUserPhotoUrl: '',
-                            ),
-                          ),
-                        );
-                      },
+                      onTap: () {},
                     );
                   }
 
-                  // Dati utente caricati
+                  // Dati utente caricati "In Diretta"
                   final udata = userSnap.data!.data()!;
                   final name = udata['name'] as String? ?? 'Utente';
-                  final rawPhotos = udata['photoUrls'] as List<dynamic>? ?? [];
-                  final validPhotos = rawPhotos
-                      .where((url) => url != null && url.toString().isNotEmpty)
-                      .map((url) => url.toString())
-                      .toList();
                   
-                  final photoUrl = validPhotos.isNotEmpty ? validPhotos.first : '';
+                  // Prendiamo direttamente l'avatar principale che ora è sempre perfetto
+                  final photoUrl = udata['photoUrl'] as String? ?? '';
 
                   return ListTile(
                     leading: SafeAvatar(url: photoUrl, radius: 20),
                     title: Text(name),
-                    subtitle: Text(lastMessage),
+                    subtitle: Text(lastMessage, maxLines: 1, overflow: TextOverflow.ellipsis),
                     onTap: () {
                       Navigator.push(
                         context,

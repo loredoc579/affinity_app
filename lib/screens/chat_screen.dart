@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_database/firebase_database.dart';
 
 import '../widgets/safe_avatar.dart';
+import 'profile_preview_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -125,24 +126,49 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          children: [
-            SafeAvatar(url: widget.otherUserPhotoUrl, radius: 18),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.otherUserName,
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w600),
+        title: StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance.collection('users').doc(widget.otherUserId).snapshots(),
+          builder: (context, snapshot) {
+            // Usiamo i dati passati come "backup" temporaneo
+            String currentName = widget.otherUserName;
+            String currentPhotoUrl = widget.otherUserPhotoUrl;
+
+            // Se arrivano dati live, li sovrascriviamo all'istante!
+            if (snapshot.hasData && snapshot.data!.exists) {
+              final userData = snapshot.data!.data() as Map<String, dynamic>;
+              currentName = userData['name'] ?? currentName;
+              currentPhotoUrl = userData['photoUrl'] ?? currentPhotoUrl;
+            }
+
+            return InkWell(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ProfilePreviewScreen(uid: widget.otherUserId),
                   ),
-                  _buildPresence(),
+                );
+              },
+              child: Row(
+                children: [
+                  SafeAvatar(url: currentPhotoUrl, radius: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          currentName,
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                        ),
+                        _buildPresence(),
+                      ],
+                    ),
+                  ),
                 ],
               ),
-            ),
-          ],
+            );
+          },
         ),
       ),
       body: Column(
