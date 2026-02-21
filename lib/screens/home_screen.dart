@@ -36,6 +36,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _navIndex = 0;
   bool _profilesRequested = false;
   StreamSubscription<DocumentSnapshot>? _userSubscription;
+  StreamSubscription<Position>? _locationSubscription;
 
   @override
   void initState() {
@@ -133,61 +134,101 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ?? '';
 
     try {
-      // --- ROBUST LOCATION HANDLING ---
+      // --- 1. CONTROLLO PERMESSI E GPS ---
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        debugPrint("Location services are disabled.");
-        throw Exception("Location services disabled");
-      }
+      if (!serviceEnabled) throw Exception("Location services disabled");
 
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          debugPrint("Location permissions are denied");
-          throw Exception("Location permissions denied");
-        }
+        if (permission == LocationPermission.denied) throw Exception("Location permissions denied");
       }
+      if (permission == LocationPermission.deniedForever) throw Exception("Location permissions permanently denied");
 
-      if (permission == LocationPermission.deniedForever) {
-        debugPrint("Location permissions are permanently denied, we cannot request permissions.");
-        throw Exception("Location permissions permanently denied");
-      }
-
-      // If we reach here, we have permission!
+      // --- 2. OTTIENI POSIZIONE ATTUALE ---
       _position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.best,
       ).timeout(const Duration(seconds: 5));
 
-      List<Placemark> placemarks = await placemarkFromCoordinates(_position!.latitude, _position!.longitude);
-      if (placemarks.isNotEmpty) {
-        final city = placemarks.first.locality ?? "Sconosciuta";
+      // --- 3. LOGICA DI RISPARMIO SCRITTURE (IL BLOCCO DEL DIVANO) ---
+      bool shouldUpdateDb = false;
+      final savedLocation = data?['location'];
 
-        debugPrint("📍 Posizione ottenuta: ${_position!.latitude}, ${_position!.longitude} - Città: $city");
+      if (savedLocation == null || savedLocation['position'] == null) {
+        // L'utente non ha MAI salvato la posizione, dobbiamo aggiornare per forza
+        shouldUpdateDb = true;
+      } else {
+        // Estraiamo le vecchie coordinate in modo sicuro
+        final savedPos = savedLocation['position'];
+        double savedLat = savedPos is GeoPoint ? savedPos.latitude : (savedPos['latitude'] ?? savedPos['_latitude'] ?? 0.0);
+        double savedLng = savedPos is GeoPoint ? savedPos.longitude : (savedPos['longitude'] ?? savedPos['_longitude'] ?? 0.0);
 
-        FirebaseFirestore.instance.collection('users').doc(uid).update({
+        // Calcoliamo quanti metri si è spostato dall'ultima volta
+        double distanceMoved = Geolocator.distanceBetween(savedLat, savedLng, _position!.latitude, _position!.longitude);
+
+        if (distanceMoved > 2000) { // 2000 metri = 2 km
+          shouldUpdateDb = true;
+          debugPrint("📍 Utente in viaggio (Spostamento: ${distanceMoved.round()}m). Aggiorno DB!");
+        } else {
+          debugPrint("📍 Utente fermo (Spostamento: ${distanceMoved.round()}m). Salto scrittura su Firebase.");
+        }
+      }
+
+      // --- 4. SCRITTURA SU FIREBASE (SOLO SE NECESSARIO) ---
+      if (shouldUpdateDb) {
+        List<Placemark> placemarks = await placemarkFromCoordinates(_position!.latitude, _position!.longitude);
+        final city = placemarks.isNotEmpty ? (placemarks.first.locality ?? "Sconosciuta") : "Sconosciuta";
+
+        await FirebaseFirestore.instance.collection('users').doc(uid).update({
           'location.position': GeoPoint(_position!.latitude, _position!.longitude),
           'location.city': city,
           'location.updatedAt': FieldValue.serverTimestamp(),
         });
-      } else {
-        debugPrint("⚠️ Non sono riuscito a ottenere la città dalla posizione.");
-         FirebaseFirestore.instance.collection('users').doc(uid).update({
-          'location.position': GeoPoint(_position!.latitude, _position!.longitude),
-          'location.updatedAt': FieldValue.serverTimestamp(),
-        });
+        debugPrint("📍 DB Aggiornato: Città $city");
       }
 
-      debugPrint("📍 Posizione aggiornata su Firestore: ${_position!.latitude}, ${_position!.longitude}");
+      // --- 5. ATTIVA IL RADAR CONTINUO ---
+      final locationSettings = const LocationSettings(
+        accuracy: LocationAccuracy.medium, 
+        distanceFilter: 2000, // 2 km
+      );
+
+      _locationSubscription = Geolocator.getPositionStream(locationSettings: locationSettings)
+          .listen((Position newPosition) async {
+        
+        debugPrint("🚗 [STREAM GPS] L'utente ha viaggiato per più di 2 km!");
+        
+        if (!mounted) return;
+
+        setState(() {
+          _position = newPosition; // Aggiorna la posizione locale
+        });
+
+        List<Placemark> placemarks = await placemarkFromCoordinates(newPosition.latitude, newPosition.longitude);
+        final city = placemarks.isNotEmpty ? (placemarks.first.locality ?? "Sconosciuta") : "Sconosciuta";
+
+        await FirebaseFirestore.instance.collection('users').doc(uid).update({
+          'location.position': GeoPoint(newPosition.latitude, newPosition.longitude),
+          'location.city': city,
+          'location.updatedAt': FieldValue.serverTimestamp(),
+        });
+        
+        debugPrint("🚗 [STREAM GPS] Firebase aggiornato: sei a $city");
+
+        // ---> RICARICA IL MAZZO DI CARTE! <---
+        if (mounted) {
+          debugPrint("🔄 Ricarico i profili per la nuova zona ($city)...");
+          // Richiamiamo il FilterManager che svuota il BLoC e riscarica la gente vicina
+          FilterManager.loadAndDispatch(context, uid, () {});
+        }
+      });   
     } catch (e) {
-      debugPrint("Errore durante l'aggiornamento della posizione: $e");
+      debugPrint("⚠️ Errore GPS: $e. Usando coordinate default.");
       _position = Position(
         latitude: 0, longitude: 0, timestamp: DateTime.now(),
         accuracy: 0, altitude: 0, heading: 0, speed: 0,
         speedAccuracy: 0, headingAccuracy: 0, altitudeAccuracy: 0,
       );
-      debugPrint("⚠️ Impossibile ottenere la posizione. Usando valori di default.");
-      debugPrint("📍 Posizione di default: ${_position!.latitude}, ${_position!.longitude}");
     }
 
     if (!mounted) return;
@@ -197,6 +238,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     _userSubscription?.cancel();
+    _locationSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     PresenceService().updatePresence(online: false);
     super.dispose();
