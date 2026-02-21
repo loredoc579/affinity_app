@@ -2,8 +2,16 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'dart:async'; // <-- Serve per usare il Timer
+import 'dart:async';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // Per caricare le immagini nella chat
+import 'package:permission_handler/permission_handler.dart';
+import 'package:record/record.dart';
+import 'package:path_provider/path_provider.dart'; // <--- QUESTA RISOLVE L'ERRORE!
 
+import '../widgets/audio_bubble.dart';
 import '../widgets/safe_avatar.dart';
 import 'profile_preview_screen.dart'; // Importa l'anteprima!
 
@@ -30,10 +38,18 @@ class _ChatScreenState extends State<ChatScreen> {
   late final DatabaseReference _lastChangedRef;
   late final DatabaseReference _activeChatRef;
   late final DatabaseReference _typingRef;
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _messagesStream;
   late final String _myUid;
+  final _audioRecorder = AudioRecorder();
+  
 
   bool _isTyping = false;
+  bool _isUploadingImage = false;
+  bool _isRecording = false;
+  DateTime? _recordStartTime; // <--- Salva quando iniziamo a parlare
   Timer? _typingTimer;
+  Timer? _ampTimer;
+  List<double> _amplitudes = []; // Conterrà l'altezza delle barrette
 
   final TextEditingController _textController = TextEditingController();
 
@@ -62,6 +78,14 @@ class _ChatScreenState extends State<ChatScreen> {
     FirebaseFirestore.instance.collection('chats').doc(widget.chatId).update({
       'readBy': FieldValue.arrayUnion([_myUid])
     });
+
+    // Salviamo lo stream qui, così non verrà mai ricreato dal setState!
+    _messagesStream = FirebaseFirestore.instance
+        .collection('chats')
+        .doc(widget.chatId)
+        .collection('messages')
+        .orderBy('timestamp', descending: true)
+        .snapshots();
   }
 
   // Controlla il campo di testo e usa un Timer per capire quando ti fermi
@@ -97,9 +121,95 @@ class _ChatScreenState extends State<ChatScreen> {
     _textController.removeListener(_onTextChanged);
     _typingTimer?.cancel();
     _typingRef.child(_myUid).set(false);
+    _ampTimer?.cancel();
     _activeChatRef.remove();
     _textController.dispose();
     super.dispose();
+  }
+
+Future<void> _toggleRecording() async {
+    if (_isRecording) {
+      // 🛑 FERMA REGISTRAZIONE E TIMER
+      _ampTimer?.cancel();
+      final path = await _audioRecorder.stop();
+
+      final finalAmps = List<double>.from(_amplitudes);
+
+      // Calcoliamo quanti secondi è durato l'audio
+      int durationSecs = 0;
+      if (_recordStartTime != null) {
+        durationSecs = DateTime.now().difference(_recordStartTime!).inSeconds;
+      }
+
+      setState(() {
+        _isRecording = false;
+        _amplitudes.clear(); // Pulisce il grafico
+      });
+      
+      if (path != null) {
+        _sendAudio(File(path), finalAmps, durationSecs);
+      }
+    } else {
+      // 🎤 INIZIA REGISTRAZIONE
+      if (await Permission.microphone.request().isGranted) {
+        final tempDir = await getTemporaryDirectory();
+        final path = '${tempDir.path}/audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
+        _recordStartTime = DateTime.now();
+        await _audioRecorder.start(const RecordConfig(), path: path);
+        setState(() => _isRecording = true);
+
+        // 📊 AVVIA IL GRAFICO DELLE FREQUENZE
+        _ampTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) async {
+          final amp = await _audioRecorder.getAmplitude();
+          // Converte i Decibel (da -50 a 0) in un valore da 0.1 a 1.0
+          double level = (amp.current + 50) / 50;
+          level = level.clamp(0.1, 1.0);
+          
+          if (mounted) {
+            setState(() {
+              _amplitudes.add(level);
+              if (_amplitudes.length > 40) _amplitudes.removeAt(0); 
+            });
+          }
+        });
+
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Permesso microfono negato')));
+      }
+    }
+  }
+
+  Future<void> _sendAudio(File file, List<double> amps, int durationSecs) async {
+    try {
+      final m = (durationSecs ~/ 60).toString().padLeft(2, '0');
+      final s = (durationSecs % 60).toString().padLeft(2, '0');
+      final formattedTime = '$m:$s';
+      final messagePreview = '🎤 Audio ($formattedTime)';
+      final fileName = DateTime.now().millisecondsSinceEpoch.toString();
+      final ref = FirebaseStorage.instance.ref().child('chat_audios/${widget.chatId}/$fileName.m4a');
+      
+      await ref.putFile(file);
+      final audioUrl = await ref.getDownloadURL();
+      final now = FieldValue.serverTimestamp();
+
+      await FirebaseFirestore.instance.collection('chats').doc(widget.chatId).collection('messages').add({
+        'senderId': _myUid,
+        'type': 'audio',
+        'audioUrl': audioUrl,
+        'amplitudes': amps,
+        'duration': durationSecs, // <--- SALVIAMO LA DURATA IN SECONDI
+        'text': messagePreview,   // <--- TESTO FORMATTATO (🎤 Audio 00:15)
+        'timestamp': now,
+      });
+
+      await FirebaseFirestore.instance.collection('chats').doc(widget.chatId).update({
+        'lastMessage': messagePreview,
+        'lastUpdated': now,
+        'readBy': [_myUid], 
+      });
+    } catch (e) {
+      debugPrint("Errore invio audio: $e");
+    }
   }
 
   void _sendMessage() {
@@ -127,6 +237,56 @@ class _ChatScreenState extends State<ChatScreen> {
     _textController.clear();
     _typingTimer?.cancel();
     _typingRef.child(_myUid).set(false);
+  }
+
+  Future<void> _sendImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    
+    if (pickedFile == null) return;
+
+    setState(() => _isUploadingImage = true);
+
+    try {
+      final file = File(pickedFile.path);
+      final fileName = DateTime.now().millisecondsSinceEpoch.toString();
+      
+      // 1. Carichiamo la foto su Firebase Storage nella cartella della chat
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('chat_images/${widget.chatId}/$fileName.jpg');
+          
+      await ref.putFile(file);
+      final imageUrl = await ref.getDownloadURL();
+
+      final now = FieldValue.serverTimestamp();
+
+      // 2. Salviamo il messaggio su Firestore specificando il "type"
+      await FirebaseFirestore.instance
+          .collection('chats')
+          .doc(widget.chatId)
+          .collection('messages')
+          .add({
+        'senderId': _myUid,
+        'type': 'image', // <--- FONDAMENTALE!
+        'imageUrl': imageUrl,
+        'text': '📷 Immagine', // Testo di fallback
+        'timestamp': now,
+      });
+
+      // 3. Aggiorniamo l'ultimo messaggio della chat
+      await FirebaseFirestore.instance.collection('chats').doc(widget.chatId).update({
+        'lastMessage': '📷 Immagine',
+        'lastUpdated': now,
+        'readBy': [_myUid], 
+      });
+
+    } catch (e) {
+      debugPrint("Errore invio immagine: $e");
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Errore invio immagine')));
+    } finally {
+      if (mounted) setState(() => _isUploadingImage = false);
+    }
   }
 
   // --- FUNZIONI DI SICUREZZA ---
@@ -280,12 +440,7 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           Expanded(
             child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance
-                  .collection('chats')
-                  .doc(widget.chatId)
-                  .collection('messages')
-                  .orderBy('timestamp', descending: true)
-                  .snapshots(),
+              stream: _messagesStream,
               builder: (ctx, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
@@ -307,16 +462,37 @@ class _ChatScreenState extends State<ChatScreen> {
                   itemBuilder: (ctx2, i) {
                     final data = docs[i].data();
                     final isMe = data['senderId'] == _myUid;
+                    final msgType = data['type'] ?? 'text';
                     return Align(
                       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
                       child: Container(
                         margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-                        padding: const EdgeInsets.all(12),
+                        padding: msgType == 'image' ? const EdgeInsets.all(4) : const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           color: isMe ? Theme.of(context).primaryColor.withAlpha(200) : Colors.grey.shade300,
                           borderRadius: BorderRadius.circular(16),
                         ),
-                        child: Text(data['text'] ?? '', style: TextStyle(color: isMe ? Colors.white : Colors.black87)),
+                        // Se è un'immagine, mostriamo la foto con i bordi arrotondati
+                        child: msgType == 'image' 
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: CachedNetworkImage(
+                                imageUrl: data['imageUrl'] ?? '',
+                                width: 200, 
+                                fit: BoxFit.cover,
+                              ),
+                            )
+                          : msgType == 'audio'
+                              ? SizedBox(
+                                  width: 250, // Larghezza del player audio
+                                  child: AudioBubble(
+                                    audioUrl: data['audioUrl'] ?? '', 
+                                    isMe: isMe,
+                                    amplitudes: data['amplitudes'] ?? [], 
+                                    durationSeconds: data['duration'] ?? 0,
+                                  ),
+                                )
+                              : Text(data['text'] ?? '', style: TextStyle(color: isMe ? Colors.white : Colors.black87)),
                       ),
                     );
                   },
@@ -351,26 +527,87 @@ class _ChatScreenState extends State<ChatScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               child: Row(
                 children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _textController,
-                      decoration: InputDecoration(
-                        hintText: 'Scrivi un messaggio...',
-                        filled: true,
-                        fillColor: Colors.grey.shade200,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
-                        ),
+                  
+                  // 1. TASTO FOTO (Scompare mentre registri l'audio!)
+                  if (!_isRecording) ...[
+                    if (_isUploadingImage)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 12),
+                        child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                      )
+                    else
+                      IconButton(
+                        icon: const Icon(Icons.image, color: Colors.grey),
+                        onPressed: _sendImage,
                       ),
-                      minLines: 1,
-                      maxLines: 4,
-                    ),
+                  ],
+
+                  // 2. CENTRO: ONDE AUDIO O CAMPO DI TESTO
+                  Expanded(
+                    child: _isRecording
+                        ? Container(
+                            height: 48,
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(24)),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.mic, color: Colors.red, size: 20),
+                                const SizedBox(width: 8),
+                                const Text('Rec...', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: ListView.builder(
+                                    scrollDirection: Axis.horizontal,
+                                    reverse: true,
+                                    itemCount: _amplitudes.length,
+                                    itemBuilder: (context, index) {
+                                      final amp = _amplitudes[_amplitudes.length - 1 - index];
+                                      return Center(
+                                        child: Container(
+                                          margin: const EdgeInsets.symmetric(horizontal: 2),
+                                          width: 3,
+                                          height: 40 * amp,
+                                          decoration: BoxDecoration(
+                                            color: Colors.redAccent,
+                                            borderRadius: BorderRadius.circular(2),
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : TextField(
+                            controller: _textController,
+                            decoration: InputDecoration(
+                              hintText: 'Scrivi un messaggio...',
+                              filled: true,
+                              fillColor: Colors.grey.shade200,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                            ),
+                            minLines: 1,
+                            maxLines: 4,
+                          ),
                   ),
+
+                  // 3. TASTO INVIA TESTO (Scompare mentre registri l'audio!)
+                  if (!_isRecording)
+                    IconButton(
+                      icon: const Icon(Icons.send, color: Colors.pink),
+                      onPressed: _sendMessage,
+                    ),
+
+                  // 4. TASTO AUDIO (Diventa un tasto Invia rosso mentre registri!)
                   IconButton(
-                    icon: const Icon(Icons.send, color: Colors.pink),
-                    onPressed: _sendMessage,
+                    // L'icona cambia da microfono ad aeroplanino di carta
+                    icon: Icon(_isRecording ? Icons.send : Icons.mic),
+                    color: _isRecording ? Colors.red : Colors.grey,
+                    iconSize: _isRecording ? 28 : 24,
+                    onPressed: _toggleRecording,
                   ),
                 ],
               ),
