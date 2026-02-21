@@ -222,11 +222,30 @@ class _HomeContentState extends State<HomeContent> with SingleTickerProviderStat
             cardBuilder: (ctx, i, _, __) {
               final user = users[i];
               final isTop = i == _currentIndex;
+
+              String distanceText = '';
+
+              if (user.latitude != null && user.longitude != null) {
+                double distanceInMeters = Geolocator.distanceBetween(
+                  widget.position.latitude,
+                  widget.position.longitude,
+                  user.latitude!,
+                  user.longitude!,
+                );
+                
+                int distanceKm = (distanceInMeters / 1000).round();
+                // Mostra un testo pulito per l'utente
+                distanceText = distanceKm < 1 ? '< 1 km da te' : '$distanceKm km da te';
+              } else {
+                // Opzionale: Se manca la posizione nel database dell'altro utente
+                distanceText = 'Distanza sconosciuta';
+              }
               
               // MODIFICA: Passiamo l'oggetto User alla card
               return SwipeCard(
                 key: ValueKey(user.id),
-                user: user, // <--- Importante: dovremo aggiornare SwipeCard
+                user: user,
+                distance: distanceText,
                 showOverlay: _showOverlay && isTop,
                 overlayDir: _mapToSwipeDir(_overlayDir),
                 onNope: () => _swipe(CardSwiperDirection.left, SwipeOverlayDir.left),

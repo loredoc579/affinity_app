@@ -9,6 +9,7 @@ enum SwipeDir { none, left, superlike, right }
 
 class SwipeCard extends StatelessWidget {
   final UserModel user;
+  final String distance;
   final VoidCallback? onLike;
   final VoidCallback? onNope;
   final VoidCallback? onSuperlike;
@@ -22,6 +23,7 @@ class SwipeCard extends StatelessWidget {
   const SwipeCard({
     super.key,
     required this.user,
+    this.distance = '',
     this.onLike,
     this.onNope,
     this.onSuperlike,
@@ -122,17 +124,51 @@ class SwipeCard extends StatelessWidget {
                         ),
                       ),
 
-                      // Testo Nome e Età
+                      // Testo Nome, Età e DISTANZA
                       Padding(
                         padding: const EdgeInsets.only(left: 20, bottom: 90),
-                        child: Text(
-                          '${user.name}, ${user.age}',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: fontSize,
-                            fontWeight: FontWeight.bold,
-                            shadows: const [Shadow(blurRadius: 6, color: Colors.black45, offset: Offset(0, 2))],
-                          ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Nome ed Età
+                            Text(
+                              '${user.name}, ${user.age}',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: fontSize,
+                                fontWeight: FontWeight.bold,
+                                shadows: const [Shadow(blurRadius: 6, color: Colors.black45, offset: Offset(0, 2))],
+                              ),
+                            ),
+                            
+                            // --- RIGA DELLA DISTANZA ---
+                            if (distance.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.2),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(Icons.location_on, color: Colors.white, size: 14),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    distance,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      shadows: [Shadow(blurRadius: 4, color: Colors.black, offset: Offset(0, 1))],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
                         ),
                       ),
 

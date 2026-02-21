@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class UserModel extends Equatable {
   final String id;
@@ -73,6 +74,37 @@ class UserModel extends Equatable {
       location: parsedLocation,
       gender: (map['gender'] ?? 'N.D.').toString(), 
     );
+  }
+
+// --- GETTER GEOLOCALIZZAZIONE A PROVA DI BOMBA ---
+  double? get latitude {
+    if (location != null && location!['position'] != null) {
+      final pos = location!['position'];
+      
+      if (pos is GeoPoint) {
+        return pos.latitude;
+      } else if (pos is Map) {
+        // Cerca sia 'latitude' normale che '_latitude' (formato JSON Cloud Function)
+        return (pos['latitude'] as num?)?.toDouble() ?? 
+               (pos['_latitude'] as num?)?.toDouble();
+      }
+    }
+    return null;
+  }
+
+  double? get longitude {
+    if (location != null && location!['position'] != null) {
+      final pos = location!['position'];
+      
+      if (pos is GeoPoint) {
+        return pos.longitude;
+      } else if (pos is Map) {
+        // Cerca sia 'longitude' normale che '_longitude'
+        return (pos['longitude'] as num?)?.toDouble() ?? 
+               (pos['_longitude'] as num?)?.toDouble();
+      }
+    }
+    return null;
   }
 
   Map<String, dynamic> toMap() {
