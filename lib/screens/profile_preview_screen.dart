@@ -78,6 +78,9 @@ class ProfilePreviewScreen extends StatelessWidget {
             validPhotos.add(data['photoUrl']);
           }
 
+          final String favoriteSong = data['favoriteSong'] ?? '';
+          final List<dynamic> rawPrompts = data['prompts'] ?? [];
+
           // COSTRUZIONE DINAMICA DELLA LISTA VERTICALE
           List<Widget> feedWidgets = [];
 
@@ -168,6 +171,73 @@ class ProfilePreviewScreen extends StatelessWidget {
                         )).toList(),
                       ),
                     ],
+                  ],
+                ),
+              ),
+            );
+          }
+
+          // --- 5. BLOCCO ICEBREAKERS (Prompt Multipli & Musica) ---
+          if (rawPrompts.isNotEmpty || favoriteSong.isNotEmpty) {
+            feedWidgets.add(
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                child: Column(
+                  children: [
+                    // Disegna tutti i Prompt
+                    ...rawPrompts.map((prompt) {
+                      return Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))],
+                          border: Border.all(color: Colors.grey.shade200),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(prompt['question'] ?? '', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
+                            const SizedBox(height: 8),
+                            Text(prompt['answer'] ?? '', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.black87, height: 1.2)),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                      
+                    // Disegna la Canzone
+                    if (favoriteSong.isNotEmpty)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1DB954).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFF1DB954).withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: const BoxDecoration(color: Color(0xFF1DB954), shape: BoxShape.circle),
+                              child: const Icon(Icons.music_note, color: Colors.white, size: 24),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('In loop ultimamente', style: TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 2),
+                                  Text(favoriteSong, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
               ),

@@ -11,6 +11,8 @@ class UserModel extends Equatable {
   final List<String> interests;
   final Map<String, dynamic>? location;
   final String gender;
+  final String favoriteSong; 
+  final List<Map<String, dynamic>> prompts;
 
   const UserModel({
     required this.id,
@@ -22,6 +24,8 @@ class UserModel extends Equatable {
     required this.interests,
     this.location,
     required this.gender,
+    this.favoriteSong = '', 
+    this.prompts = const [],
   });
 
   factory UserModel.fromMap(Map<String, dynamic> map) {
@@ -72,7 +76,11 @@ class UserModel extends Equatable {
       jobTitle: (map['jobTitle'] ?? '').toString(),
       interests: parsedInterests,
       location: parsedLocation,
-      gender: (map['gender'] ?? 'N.D.').toString(), 
+      gender: (map['gender'] ?? 'N.D.').toString(),
+      favoriteSong: (map['favoriteSong'] ?? '').toString(),
+      prompts: map['prompts'] is List 
+          ? List<Map<String, dynamic>>.from(map['prompts']) 
+          : [],
     );
   }
 
@@ -117,10 +125,12 @@ class UserModel extends Equatable {
       'hobbies': interests.join(', '), 
       'location': location,
       'photoUrls': imageUrls,
-      'gender': gender, 
+      'gender': gender,
+      'favoriteSong': favoriteSong,
+      'prompt': prompts,
     };
   }
 
   @override
-  List<Object?> get props => [id, name, age, imageUrls, bio, location, interests, gender]; 
+  List<Object?> get props => [id, name, age, imageUrls, bio, location, interests, gender, favoriteSong, prompts]; 
 }

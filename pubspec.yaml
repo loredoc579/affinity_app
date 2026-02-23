@@ -65,6 +65,7 @@ dependencies:
   record: ^6.2.0
   audioplayers: ^6.5.1
   path_provider: ^2.1.5
+  reorderable_grid_view: ^2.2.8
 
 dev_dependencies:
   flutter_test:
