@@ -79,7 +79,10 @@ class UserModel extends Equatable {
       gender: (map['gender'] ?? 'N.D.').toString(),
       favoriteSong: (map['favoriteSong'] ?? '').toString(),
       prompts: map['prompts'] is List 
-          ? List<Map<String, dynamic>>.from(map['prompts']) 
+          ? (map['prompts'] as List)
+              .whereType<Map>() // Prende solo gli elementi che sono mappe valide
+              .map((p) => Map<String, dynamic>.from(p)) // Le converte una per una in modo sicuro
+              .toList() 
           : [],
     );
   }

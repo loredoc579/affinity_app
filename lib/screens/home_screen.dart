@@ -22,6 +22,7 @@ import 'chat_list_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart'; 
 import 'match_screen.dart';
+import 'chat_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -104,11 +105,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   margin: const EdgeInsets.only(bottom: 20, left: 20, right: 20),
                   duration: const Duration(seconds: 4),
                   action: SnackBarAction(
-                    label: 'Vedi',
+                    label: 'Scrivi', // Cambiato da "Vedi" a "Scrivi"
                     textColor: Colors.white,
-                    onPressed: () {
-                      // Se clicca, lo portiamo alla tab delle chat (Indice 1)
-                      setState(() => _navIndex = 1);
+                    onPressed: () async {
+                      // 1. Recuperiamo l'ID dell'altra persona dalla chat creata
+                      final participants = List<String>.from(data['participants'] ?? []);
+                      final otherUserId = participants.firstWhere((id) => id != uid, orElse: () => '');
+                      
+                      if (otherUserId.isNotEmpty) {
+                        // Mostra un piccolo caricamento visivo opzionale qui se vuoi, ma Firebase cache è istantaneo
+                        
+                        // 2. Andiamo a prendere Nome e Foto dell'altro utente
+                        final otherUserDoc = await FirebaseFirestore.instance.collection('users').doc(otherUserId).get();
+                        
+                        // Controllo di sicurezza se nel frattempo l'utente ha chiuso l'app
+                        if (!mounted) return; 
+                        
+                        if (otherUserDoc.exists) {
+                          final otherData = otherUserDoc.data()!;
+                          final otherName = otherData['name'] ?? 'Utente';
+                          final otherPhoto = otherData['photoUrl'] ?? '';
+                          final chatId = change.doc.id; // L'ID del documento chat
+
+                          // 3. IL TELETRASPORTO!
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ChatScreen(
+                                chatId: chatId,
+                                otherUserId: otherUserId,
+                                otherUserName: otherName,
+                                otherUserPhotoUrl: otherPhoto,
+                              ),
+                            ),
+                          );
+                        }
+                      }
                     },
                   ),
                 ),
@@ -301,7 +333,6 @@ return BlocListener<NetworkCubit, NetworkStatus>(
         child: BlocListener<SwipeBloc, SwipeState>(
           listener: (context, state) async {
             if (state is SwipeMatched) {
-              // Quando scatta il match, prendiamo i dati per mostrare le foto
               final myUid = FirebaseAuth.instance.currentUser!.uid;
               final otherDoc = await FirebaseFirestore.instance.collection('users').doc(state.matchId).get();
               final myDoc = await FirebaseFirestore.instance.collection('users').doc(myUid).get();
@@ -310,13 +341,22 @@ return BlocListener<NetworkCubit, NetworkStatus>(
                 final otherData = otherDoc.data()!;
                 final myData = myDoc.data()!;
                 
-                // Mostra la schermata Match trasparente!
+                // --- ESTRAZIONE FOTO A PROVA DI BOMBA ---
+                // Peschiamo la prima foto dall'array, se non c'è usiamo il vecchio campo, altrimenti vuoto
+                final myPhoto = (myData['photoUrls'] as List<dynamic>?)?.firstOrNull as String? 
+                             ?? myData['photoUrl'] as String? 
+                             ?? '';
+                             
+                final otherPhoto = (otherData['photoUrls'] as List<dynamic>?)?.firstOrNull as String? 
+                                ?? otherData['photoUrl'] as String? 
+                                ?? '';
+                
                 Navigator.of(context).push(
                   PageRouteBuilder(
                     opaque: false, 
                     pageBuilder: (BuildContext context, _, __) => MatchScreen(
-                      myPhotoUrl: myData['photoUrl'] ?? '',
-                      otherPhotoUrl: otherData['photoUrl'] ?? '',
+                      myPhotoUrl: myPhoto,       // <-- Assicurati che ci sia myPhoto qui
+                      otherPhotoUrl: otherPhoto, // <-- E otherPhoto qui!
                       otherName: otherData['name'] ?? 'Utente',
                       otherUserId: state.matchId,
                       chatId: state.chatRoomId,

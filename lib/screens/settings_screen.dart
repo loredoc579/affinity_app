@@ -1,10 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter_cache_manager/flutter_cache_manager.dart'; // <-- Nuovo import per la cache
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+
+import 'match_screen.dart'; // <-- IMPORT FONDAMENTALE PER IL TEST
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
+
+  // --- 🛡️ LISTA UTENTI PROTETTI (SAFE LIST) ---
+  // Inserisci qui gli UID degli account di test che NON vuoi che vengano
+  // modificati (foto) o le cui chat/swipe non devono essere cancellate.
+  static const List<String> _excludedUserIds = [
+    'OdKJBolEegRW4dFHCvzXvDbfguv2'// 'inserisci_qui_uid_1',''
+    // 'inserisci_qui_uid_2',
+  ];
 
   // --- 1. SET FOTOGRAFICI HD (Ampliati e verificati) ---
   static const List<List<String>> _profiliUomoHD = [
@@ -64,7 +74,8 @@ class SettingsScreen extends StatelessWidget {
       int countUomini = 0, countDonne = 0;
 
       for (var doc in snapshot.docs) {
-        if (doc.id == currentUid) continue; // Salta TE STESSO
+        // 🛡️ CONTROLLO PROTEZIONE: Salta te stesso e chi è nella lista esclusi
+        if (doc.id == currentUid || _excludedUserIds.contains(doc.id)) continue; 
 
         final data = doc.data();
         final String rawGender = data['gender']?.toString().toLowerCase().trim() ?? 'female';
@@ -79,19 +90,17 @@ class SettingsScreen extends StatelessWidget {
           countDonne++;
         }
 
-        // AGGIORNAMENTO CORRETTO: Aggiorniamo SIA photoUrls che photoUrl!
         await db.collection('users').doc(doc.id).update({
-          'photoUrl': nuoveFoto[0], // L'avatar principale (Risolve i quadrati bianchi!)
-          'photoUrls': nuoveFoto,   // L'array per il profilo
+          'photoUrl': nuoveFoto[0],
+          'photoUrls': nuoveFoto,   
           'imageUrls': FieldValue.delete(),
         });
       }
       
       if (context.mounted) {
-        // Obblighiamo la cache a svuotarsi per vedere i nuovi risultati subito!
         await DefaultCacheManager().emptyCache();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ Foto HD impostate!'), backgroundColor: Colors.green),
+          const SnackBar(content: Text('✅ Foto HD impostate (utenti protetti ignorati)!'), backgroundColor: Colors.green),
         );
       }
     } catch (e) {
@@ -107,10 +116,18 @@ class SettingsScreen extends StatelessWidget {
       final db = FirebaseFirestore.instance;
       final swipesSnapshot = await db.collection('swipes').where('from', isEqualTo: uid).get();
       final batch = db.batch();
-      for (var doc in swipesSnapshot.docs) { batch.delete(doc.reference); }
+      
+      for (var doc in swipesSnapshot.docs) {
+        final data = doc.data();
+        // 🛡️ CONTROLLO PROTEZIONE: Non cancellare gli swipe fatti verso utenti protetti
+        if (_excludedUserIds.contains(data['to'])) continue;
+        
+        batch.delete(doc.reference); 
+      }
+      
       await batch.commit();
 
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Swipe azzerati!')));
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Swipe azzerati (esclusi protetti)!')));
     } catch (e) {
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ Errore: $e')));
     }
@@ -121,12 +138,11 @@ class SettingsScreen extends StatelessWidget {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
 
-    // Chiediamo conferma perché è un'azione distruttiva
     final conferma = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('💣 Reset Totale'),
-        content: const Text('Vuoi eliminare FISICAMENTE tutte le tue chat e i tuoi swipe? Utile per testare di nuovo i Match da zero.'),
+        content: const Text('Vuoi eliminare FISICAMENTE le chat e swipe? Verranno salvati gli utenti nella Safe List.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annulla')),
           TextButton(
@@ -139,29 +155,34 @@ class SettingsScreen extends StatelessWidget {
 
     if (conferma != true) return;
 
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('💣 Distruzione in corso...')));
-    }
+    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('💣 Distruzione in corso...')));
 
     try {
       final db = FirebaseFirestore.instance;
       final batch = db.batch();
 
-      // 1. Troviamo ed eliminiamo TUTTE le chat in cui sei coinvolto
+      // 1. ELIMINA CHAT
       final chatsSnap = await db.collection('chats').where('participants', arrayContains: uid).get();
       for (var doc in chatsSnap.docs) {
-        // Entriamo nella sottocollezione e distruggiamo i messaggi
+        final data = doc.data();
+        final participants = List<String>.from(data['participants'] ?? []);
+        
+        // 🛡️ CONTROLLO PROTEZIONE: Se la chat include un utente protetto, saltala!
+        if (participants.any((p) => _excludedUserIds.contains(p))) continue;
+
         final messagesSnap = await doc.reference.collection('messages').get();
         for (var msgDoc in messagesSnap.docs) {
           batch.delete(msgDoc.reference);
         }
-        // Infine distruggiamo il contenitore della chat
         batch.delete(doc.reference);
       }
 
-      // 2. Troviamo ed eliminiamo TUTTI i tuoi swipe
+      // 2. ELIMINA SWIPE
       final swipesSnap = await db.collection('swipes').where('from', isEqualTo: uid).get();
       for (var doc in swipesSnap.docs) {
+        final data = doc.data();
+        // 🛡️ CONTROLLO PROTEZIONE
+        if (_excludedUserIds.contains(data['to'])) continue;
         batch.delete(doc.reference);
       }
 
@@ -173,9 +194,7 @@ class SettingsScreen extends StatelessWidget {
         );
       }
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ Errore: $e')));
-      }
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ Errore: $e')));
     }
   }
 
@@ -187,6 +206,31 @@ class SettingsScreen extends StatelessWidget {
         const SnackBar(content: Text('🧹 Cache immagini pulita! Ricarica le pagine.'), backgroundColor: Colors.orange),
       );
     }
+  }
+
+  // --- FUNZIONE: TEST ANIMAZIONE MATCH ---
+  Future<void> _testMatchScreen(BuildContext context) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    
+    // Prende la tua foto attuale per renderlo realistico
+    final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+    final myPhoto = doc.data()?['photoUrl'] ?? 'https://via.placeholder.com/150';
+
+    if (!context.mounted) return;
+
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false, // Fondamentale per la sfocatura!
+        pageBuilder: (BuildContext context, _, __) => MatchScreen(
+          myPhotoUrl: myPhoto,
+          otherPhotoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=800&auto=format&fit=crop',
+          otherName: 'Giulia (Test)',
+          otherUserId: 'fake_id_123',
+          chatId: 'fake_chat_123',
+        ),
+      ),
+    );
   }
 
   @override
@@ -208,15 +252,23 @@ class SettingsScreen extends StatelessWidget {
             child: Column(
               children: [
                 ListTile(
+                  leading: const Icon(Icons.favorite, color: Colors.pink),
+                  title: const Text('Test Animazione Match', style: TextStyle(color: Colors.pink, fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Simula la schermata di match senza swipe', style: TextStyle(color: Colors.pink, fontSize: 12)),
+                  onTap: () => _testMatchScreen(context),
+                ),
+                const Divider(height: 1),
+                ListTile(
                   leading: const Icon(Icons.hd, color: Colors.red),
                   title: const Text('Applica Foto HD al DB', style: TextStyle(color: Colors.red)),
-                  subtitle: const Text('Risolve foto bianche (non tocca il tuo profilo)', style: TextStyle(color: Colors.red, fontSize: 12)),
+                  subtitle: const Text('Risolve foto bianche (non tocca la Safe List)', style: TextStyle(color: Colors.red, fontSize: 12)),
                   onTap: () => _ripopolaImmaginiDatabase(context),
                 ),
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.refresh, color: Colors.red),
                   title: const Text('Azzera i miei Swipe', style: TextStyle(color: Colors.red)),
+                  subtitle: const Text('Esclude gli utenti nella Safe List', style: TextStyle(color: Colors.red, fontSize: 12)),
                   onTap: () => _azzeraSwipe(context),
                 ),
                 const Divider(height: 1),
@@ -230,7 +282,7 @@ class SettingsScreen extends StatelessWidget {
                 ListTile(
                   leading: const Icon(Icons.warning_amber_rounded, color: Colors.purple),
                   title: const Text('Hard Reset (Chat + Swipe)', style: TextStyle(color: Colors.purple, fontWeight: FontWeight.bold)),
-                  subtitle: const Text('Elimina fisicamente tutto per ri-testare', style: TextStyle(color: Colors.purple, fontSize: 12)),
+                  subtitle: const Text('Rispetta le regole della Safe List', style: TextStyle(color: Colors.purple, fontSize: 12)),
                   onTap: () => _hardResetDev(context),
                 ),
               ],

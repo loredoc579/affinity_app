@@ -1,16 +1,15 @@
 import * as admin from "firebase-admin";
 import {onDocumentCreated} from "firebase-functions/v2/firestore";
 
-// Inizializza l’Admin SDK (idempotente se chiamato più volte)
 // Inizializza l’Admin SDK solo se non esiste già
 if (!admin.apps.length) {
   admin.initializeApp();
 }
 
-
 // Interface per il documento Chat
 interface Chat {
   participants: string[];
+  createdBy?: string;
   // aggiungi altri campi se necessari
 }
 
@@ -25,19 +24,37 @@ export const onChatCreated = onDocumentCreated(
     }
 
     // Casting esplicito del documento a Chat
-    const chat = snap.data() as Chat & { createdBy?: string };
+    const chat = snap.data() as Chat;
+    const creatorId = chat.createdBy;
 
-    const receivers = chat.participants.filter((id) => id !== chat.createdBy);
-
-    if (receivers.length === 0) return;
-
-    if (!chat || !Array.isArray(chat.participants)) {
-      console.log("Missing or invalid participants:", chat);
+    if (!creatorId || !Array.isArray(chat.participants)) {
+      console.log("Missing creatorId or invalid participants:", chat);
       return;
     }
 
-    // Estrai chatId dai parametri del path
+    // Troviamo chi DEVE ricevere la notifica (cioè non il creatore)
+    const receivers = chat.participants.filter((id) => id !== creatorId);
+    if (receivers.length === 0) return;
+
     const {chatId} = event.params;
+
+    // --- 🌟 NOVITÀ: RECUPERA I DATI DEL MITTENTE ---
+    let senderName = "Qualcuno";
+    let senderPhoto = "";
+    try {
+      const creatorDoc = await admin
+        .firestore()
+        .collection("users")
+        .doc(creatorId)
+        .get();
+      if (creatorDoc.exists) {
+        const data = creatorDoc.data();
+        senderName = data?.name || "Qualcuno";
+        senderPhoto = data?.photoUrl || "";
+      }
+    } catch (error) {
+      console.error("Errore durante il recupero del profilo mittente:", error);
+    }
 
     // 1) Prendi tutti i token dei partecipanti
     const tokensSnap = await admin
@@ -53,18 +70,28 @@ export const onChatCreated = onDocumentCreated(
       return;
     }
 
-    // 2) Prepara i messaggi
-    const messages: admin.messaging.Message[] = allTokens.map((token) => ({
-      token,
-      notification: {
-        title: "Hai un nuovo match! 🎉",
-        body: "Puoi iniziare a chattare con il tuo nuovo match.",
-      },
-      data: {
-        type: "new_chat",
-        chatId,
-      },
-    }));
+    // 2) Prepara i messaggi personalizzati
+    const messages: admin.messaging.Message[] = allTokens.map((token) => {
+      const message: admin.messaging.Message = {
+        token,
+        notification: {
+          title: `Nuovo match con ${senderName}! 🎉`,
+          body: "Tocca per iniziare subito a chattare.",
+        },
+        data: {
+          type: "new_chat",
+          chatId,
+        },
+      };
+
+      // Se l'utente ha una foto, diciamo ad Android/iOS di mostrarla
+      // nella Push!
+      if (senderPhoto && message.notification) {
+        message.notification.imageUrl = senderPhoto;
+      }
+
+      return message;
+    });
 
     // 3) Invia tutte le notifiche in parallelo e logga i risultati
     const results = await Promise.allSettled(
@@ -73,13 +100,17 @@ export const onChatCreated = onDocumentCreated(
 
     const successCount = results.filter((r) => r.status === "fulfilled").length;
     const failureCount = results.length - successCount;
-    console.log(`✅ Inviate ${successCount}/${results.length} notifiche;
-       ${failureCount} fallite.`);
+    console.log(
+      `✅ Inviate ${successCount}/${results.length} notifiche; ` +
+      `${failureCount} fallite.`
+    );
 
     results.forEach((r, idx) => {
       if (r.status === "rejected") {
-        console.warn(`❌ Token ${allTokens[idx]} →`,
-          (r as PromiseRejectedResult).reason);
+        console.warn(
+          `❌ Token ${allTokens[idx]} →`,
+          (r as PromiseRejectedResult).reason
+        );
       }
     });
   }
