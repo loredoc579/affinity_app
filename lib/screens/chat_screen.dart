@@ -76,7 +76,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
     // Segna i messaggi come letti entrando
     FirebaseFirestore.instance.collection('chats').doc(widget.chatId).update({
-      'readBy': FieldValue.arrayUnion([_myUid])
+      'readBy': FieldValue.arrayUnion([_myUid]),
+      'lastRead_$_myUid': FieldValue.serverTimestamp(), // <--- 1. AGGIUNGI QUESTA RIGA!
     });
 
     // Salviamo lo stream qui, così non verrà mai ricreato dal setState!
@@ -458,7 +459,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 if (snapshot.hasData) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     FirebaseFirestore.instance.collection('chats').doc(widget.chatId).update({
-                      'readBy': FieldValue.arrayUnion([_myUid])
+                      'readBy': FieldValue.arrayUnion([_myUid]),
+                      'lastRead_$_myUid': FieldValue.serverTimestamp(),
                     }).catchError((_) {}); 
                   });
                 }
@@ -484,12 +486,28 @@ class _ChatScreenState extends State<ChatScreen> {
                       stream: FirebaseFirestore.instance.collection('chats').doc(widget.chatId).snapshots(),
                       builder: (context, chatSnap) {
                         
-                        // Capiamo se l'ID dell'altra persona è presente nell'array 'readBy'
+                        // --- 3. LOGICA IBRIDA INFALLIBILE: TEMPO REALE + STORICO ---
                         bool isRead = false;
                         if (chatSnap.hasData && chatSnap.data!.exists) {
                           final chatData = chatSnap.data!.data() as Map<String, dynamic>;
+                          
+                          // A) Controllo in Diretta (Se l'altro è attualmente nella chat)
                           final readBy = List<String>.from(chatData['readBy'] ?? []);
-                          isRead = readBy.contains(widget.otherUserId);
+                          final isCurrentlyRead = readBy.contains(widget.otherUserId);
+                          
+                          // B) Controllo Storico (Per non far tornare bianchi i vecchi messaggi)
+                          final otherLastRead = chatData['lastRead_${widget.otherUserId}'] as Timestamp?;
+                          final msgTimestamp = data['timestamp'] as Timestamp?;
+                          
+                          bool isHistoricallyRead = false;
+                          if (otherLastRead != null && msgTimestamp != null) {
+                            // Aggiungiamo un cuscinetto di 1 secondo per compensare i ritardi del server!
+                            final readTime = otherLastRead.toDate().add(const Duration(seconds: 1));
+                            isHistoricallyRead = msgTimestamp.toDate().isBefore(readTime);
+                          }
+
+                          // Se è letto in diretta OPPURE è stato letto in passato, accendi la spunta!
+                          isRead = isCurrentlyRead || isHistoricallyRead;
                         }
 
                         // 3. Disegnamo il messaggio
