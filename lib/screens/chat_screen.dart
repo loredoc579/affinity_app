@@ -88,8 +88,11 @@ class _ChatScreenState extends State<ChatScreen> {
         .snapshots();
   }
 
-  // Controlla il campo di testo e usa un Timer per capire quando ti fermi
+// Controlla il campo di testo e usa un Timer per capire quando ti fermi
   void _onTextChanged() {
+    
+    setState(() {}); // <--- 🪄 AGGIUNGI QUESTA RIGA! Aggiorna in diretta il tasto Mic/Invia
+
     // Se cancelli tutto il testo, spegniamo subito l'indicatore
     if (_textController.text.isEmpty) {
       if (_isTyping) {
@@ -127,55 +130,61 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-Future<void> _toggleRecording() async {
-    if (_isRecording) {
-      // 🛑 FERMA REGISTRAZIONE E TIMER
-      _ampTimer?.cancel();
-      final path = await _audioRecorder.stop();
-
-      final finalAmps = List<double>.from(_amplitudes);
-
-      // Calcoliamo quanti secondi è durato l'audio
-      int durationSecs = 0;
-      if (_recordStartTime != null) {
-        durationSecs = DateTime.now().difference(_recordStartTime!).inSeconds;
-      }
-
-      setState(() {
-        _isRecording = false;
-        _amplitudes.clear(); // Pulisce il grafico
-      });
+  // --- NUOVE FUNZIONI AUDIO ---
+  Future<void> _startRecording() async {
+    if (await Permission.microphone.request().isGranted) {
+      final tempDir = await getTemporaryDirectory();
+      final path = '${tempDir.path}/audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      _recordStartTime = DateTime.now();
+      await _audioRecorder.start(const RecordConfig(), path: path);
       
-      if (path != null) {
-        _sendAudio(File(path), finalAmps, durationSecs);
-      }
+      setState(() {
+        _isRecording = true;
+        _amplitudes.clear();
+      });
+
+      _ampTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) async {
+        final amp = await _audioRecorder.getAmplitude();
+        double level = (amp.current + 50) / 50;
+        level = level.clamp(0.1, 1.0);
+        
+        if (mounted) {
+          setState(() {
+            _amplitudes.add(level);
+            if (_amplitudes.length > 40) _amplitudes.removeAt(0); 
+          });
+        }
+      });
     } else {
-      // 🎤 INIZIA REGISTRAZIONE
-      if (await Permission.microphone.request().isGranted) {
-        final tempDir = await getTemporaryDirectory();
-        final path = '${tempDir.path}/audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
-        _recordStartTime = DateTime.now();
-        await _audioRecorder.start(const RecordConfig(), path: path);
-        setState(() => _isRecording = true);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Permesso microfono negato')));
+    }
+  }
 
-        // 📊 AVVIA IL GRAFICO DELLE FREQUENZE
-        _ampTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) async {
-          final amp = await _audioRecorder.getAmplitude();
-          // Converte i Decibel (da -50 a 0) in un valore da 0.1 a 1.0
-          double level = (amp.current + 50) / 50;
-          level = level.clamp(0.1, 1.0);
-          
-          if (mounted) {
-            setState(() {
-              _amplitudes.add(level);
-              if (_amplitudes.length > 40) _amplitudes.removeAt(0); 
-            });
-          }
-        });
+  Future<void> _cancelRecording() async {
+    _ampTimer?.cancel();
+    await _audioRecorder.stop(); // Ferma ma NON invia
+    setState(() {
+      _isRecording = false;
+      _amplitudes.clear();
+    });
+  }
 
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Permesso microfono negato')));
-      }
+  Future<void> _stopAndSendRecording() async {
+    _ampTimer?.cancel();
+    final path = await _audioRecorder.stop();
+
+    final finalAmps = List<double>.from(_amplitudes);
+    int durationSecs = _recordStartTime != null 
+        ? DateTime.now().difference(_recordStartTime!).inSeconds 
+        : 0;
+
+    setState(() {
+      _isRecording = false;
+      _amplitudes.clear();
+    });
+    
+    if (path != null) {
+      _sendAudio(File(path), finalAmps, durationSecs);
     }
   }
 
@@ -463,37 +472,91 @@ Future<void> _toggleRecording() async {
                     final data = docs[i].data();
                     final isMe = data['senderId'] == _myUid;
                     final msgType = data['type'] ?? 'text';
-                    return Align(
-                      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-                        padding: msgType == 'image' ? const EdgeInsets.all(4) : const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: isMe ? Theme.of(context).primaryColor.withAlpha(200) : Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        // Se è un'immagine, mostriamo la foto con i bordi arrotondati
-                        child: msgType == 'image' 
-                          ? ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: CachedNetworkImage(
-                                imageUrl: data['imageUrl'] ?? '',
-                                width: 200, 
-                                fit: BoxFit.cover,
+
+                    // 1. Estraiamo l'orario del messaggio
+                    final timestamp = data['timestamp'] as Timestamp?;
+                    final timeString = timestamp != null 
+                        ? TimeOfDay.fromDateTime(timestamp.toDate()).format(context) 
+                        : '';
+
+                    // 2. StreamBuilder: Controlla in tempo reale se l'altro ha aperto la chat
+                    return StreamBuilder<DocumentSnapshot>(
+                      stream: FirebaseFirestore.instance.collection('chats').doc(widget.chatId).snapshots(),
+                      builder: (context, chatSnap) {
+                        
+                        // Capiamo se l'ID dell'altra persona è presente nell'array 'readBy'
+                        bool isRead = false;
+                        if (chatSnap.hasData && chatSnap.data!.exists) {
+                          final chatData = chatSnap.data!.data() as Map<String, dynamic>;
+                          final readBy = List<String>.from(chatData['readBy'] ?? []);
+                          isRead = readBy.contains(widget.otherUserId);
+                        }
+
+                        // 3. Disegnamo il messaggio
+                        return Align(
+                          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                          child: Container(
+                            margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                            padding: msgType == 'image' ? const EdgeInsets.all(4) : const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              // --- MAGIA DEI COLORI: Rosa acceso per te, Grigio per l'altro ---
+                              color: isMe ? Colors.pinkAccent.withOpacity(0.9) : Colors.grey.shade200,
+                              borderRadius: BorderRadius.only(
+                                topLeft: const Radius.circular(16),
+                                topRight: const Radius.circular(16),
+                                bottomLeft: Radius.circular(isMe ? 16 : 4), 
+                                bottomRight: Radius.circular(isMe ? 4 : 16),
                               ),
-                            )
-                          : msgType == 'audio'
-                              ? SizedBox(
-                                  width: 250, // Larghezza del player audio
-                                  child: AudioBubble(
-                                    audioUrl: data['audioUrl'] ?? '', 
-                                    isMe: isMe,
-                                    amplitudes: data['amplitudes'] ?? [], 
-                                    durationSeconds: data['duration'] ?? 0,
-                                  ),
-                                )
-                              : Text(data['text'] ?? '', style: TextStyle(color: isMe ? Colors.white : Colors.black87)),
-                      ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                              children: [
+                                
+                                // --- CONTENUTO (Foto, Audio o Testo) ---
+                                // (Il resto rimane uguale, il testo isMe è già bianco!)
+                                if (msgType == 'image') 
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: CachedNetworkImage(imageUrl: data['imageUrl'] ?? '', width: 200, fit: BoxFit.cover),
+                                  )
+                                else if (msgType == 'audio')
+                                  SizedBox(
+                                    width: 250,
+                                    child: AudioBubble(
+                                      audioUrl: data['audioUrl'] ?? '', 
+                                      isMe: isMe,
+                                      amplitudes: data['amplitudes'] ?? [], 
+                                      durationSeconds: data['duration'] ?? 0,
+                                    ),
+                                  )
+                                else
+                                  Text(data['text'] ?? '', style: TextStyle(color: isMe ? Colors.white : Colors.black87, fontSize: 15)),
+                                
+                                // --- ORARIO E SPUNTE ---
+                                const SizedBox(height: 4),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      timeString, 
+                                      style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : Colors.black54)
+                                    ),
+                                    if (isMe) ...[
+                                      const SizedBox(width: 4),
+                                      Icon(
+                                        Icons.done_all, 
+                                        size: 16, 
+                                        // --- SPUNTE: Azzurro brillante (letto) su sfondo rosa, oppure bianco trasparente (non letto) ---
+                                        color: isRead ? Colors.lightBlueAccent.shade100 : Colors.white60, 
+                                      ), 
+                                    ],
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }
                     );
                   },
                 );
@@ -542,17 +605,22 @@ Future<void> _toggleRecording() async {
                       ),
                   ],
 
-                  // 2. CENTRO: ONDE AUDIO O CAMPO DI TESTO
+// 2. CENTRO: ONDE AUDIO O CAMPO DI TESTO
                   Expanded(
                     child: _isRecording
                         ? Container(
                             height: 48,
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
                             decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(24)),
                             child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
-                                const Icon(Icons.mic, color: Colors.red, size: 20),
+                                // TASTO ANNULLA (CESTINO)
+                                IconButton(
+                                  icon: const Icon(Icons.delete, color: Colors.red),
+                                  onPressed: _cancelRecording,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                ),
                                 const SizedBox(width: 8),
                                 const Text('Rec...', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                                 const SizedBox(width: 8),
@@ -568,10 +636,7 @@ Future<void> _toggleRecording() async {
                                           margin: const EdgeInsets.symmetric(horizontal: 2),
                                           width: 3,
                                           height: 40 * amp,
-                                          decoration: BoxDecoration(
-                                            color: Colors.redAccent,
-                                            borderRadius: BorderRadius.circular(2),
-                                          ),
+                                          decoration: BoxDecoration(color: Colors.redAccent, borderRadius: BorderRadius.circular(2)),
                                         ),
                                       );
                                     },
@@ -594,21 +659,19 @@ Future<void> _toggleRecording() async {
                           ),
                   ),
 
-                  // 3. TASTO INVIA TESTO (Scompare mentre registri l'audio!)
-                  if (!_isRecording)
+                  // 3. TASTO INVIA TESTO O AUDIO
+                  if (!_isRecording && _textController.text.isNotEmpty)
                     IconButton(
                       icon: const Icon(Icons.send, color: Colors.pink),
                       onPressed: _sendMessage,
+                    )
+                  else
+                    IconButton(
+                      icon: Icon(_isRecording ? Icons.send : Icons.mic),
+                      color: _isRecording ? Colors.pink : Colors.grey,
+                      iconSize: _isRecording ? 28 : 24,
+                      onPressed: _isRecording ? _stopAndSendRecording : _startRecording,
                     ),
-
-                  // 4. TASTO AUDIO (Diventa un tasto Invia rosso mentre registri!)
-                  IconButton(
-                    // L'icona cambia da microfono ad aeroplanino di carta
-                    icon: Icon(_isRecording ? Icons.send : Icons.mic),
-                    color: _isRecording ? Colors.red : Colors.grey,
-                    iconSize: _isRecording ? 28 : 24,
-                    onPressed: _toggleRecording,
-                  ),
                 ],
               ),
             ),

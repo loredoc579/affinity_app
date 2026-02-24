@@ -55,6 +55,20 @@ class ChatListScreen extends StatelessWidget {
 
             final lastMessage = data['lastMessage'] as String? ?? '';
 
+            // --- ESTRAZIONE ORARIO ---
+            final timestamp = data['lastUpdated'] as Timestamp?; // Usa lastUpdated!
+            String timeString = '';
+            if (timestamp != null) {
+              final dt = timestamp.toDate();
+              final now = DateTime.now();
+              // Se è di oggi mostra l'ora (es. 14:30), altrimenti il giorno (es. 12/04)
+              if (dt.year == now.year && dt.month == now.month && dt.day == now.day) {
+                timeString = TimeOfDay.fromDateTime(dt).format(context);
+              } else {
+                timeString = '${dt.day}/${dt.month}'; 
+              }
+            }
+
             return Slidable(
               key: ValueKey(chatDoc.id),
               endActionPane: ActionPane(
@@ -103,8 +117,12 @@ class ChatListScreen extends StatelessWidget {
 
                   return ListTile(
                     leading: SafeAvatar(url: photoUrl, radius: 20),
-                    title: Text(name),
+                    title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text(lastMessage, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    trailing: Text(
+                      timeString, 
+                      style: const TextStyle(color: Colors.grey, fontSize: 12)
+                    ),
                     onTap: () {
                       Navigator.push(
                         context,
