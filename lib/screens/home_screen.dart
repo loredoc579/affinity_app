@@ -207,9 +207,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
 
       // --- 4. SCRITTURA SU FIREBASE (SOLO SE NECESSARIO) ---
-      if (shouldUpdateDb) {
-        List<Placemark> placemarks = await placemarkFromCoordinates(_position!.latitude, _position!.longitude);
-        final city = placemarks.isNotEmpty ? (placemarks.first.locality ?? "Sconosciuta") : "Sconosciuta";
+if (shouldUpdateDb) {
+        String city = "Sconosciuta";
+        try {
+          List<Placemark> placemarks = await placemarkFromCoordinates(_position!.latitude, _position!.longitude);
+          if (placemarks.isNotEmpty) city = placemarks.first.locality ?? "Sconosciuta";
+        } catch (e) {
+          debugPrint("⚠️ Geocoding fallito (no internet?), uso Sconosciuta");
+        }
 
         await FirebaseFirestore.instance.collection('users').doc(uid).update({
           'location.position': GeoPoint(_position!.latitude, _position!.longitude),
@@ -236,9 +241,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _position = newPosition; // Aggiorna la posizione locale
         });
 
-        List<Placemark> placemarks = await placemarkFromCoordinates(newPosition.latitude, newPosition.longitude);
-        final city = placemarks.isNotEmpty ? (placemarks.first.locality ?? "Sconosciuta") : "Sconosciuta";
-
+        String city = "Sconosciuta";
+        try {
+          List<Placemark> placemarks = await placemarkFromCoordinates(newPosition.latitude, newPosition.longitude);
+          if (placemarks.isNotEmpty) city = placemarks.first.locality ?? "Sconosciuta";
+        } catch (e) {
+          debugPrint("⚠️ Geocoding stream fallito, uso Sconosciuta");
+        }
+        
         await FirebaseFirestore.instance.collection('users').doc(uid).update({
           'location.position': GeoPoint(newPosition.latitude, newPosition.longitude),
           'location.city': city,

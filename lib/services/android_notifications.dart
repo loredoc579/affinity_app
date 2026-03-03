@@ -10,50 +10,35 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-import '../screens/chat_screen.dart'; // Per poter aprire la schermata
+import '../screens/chat_screen.dart'; 
 
-/// Gestisce TUTTO ciò che riguarda le notifiche su Android.
-/// - richiesta permessi
-/// - inizializzazione plugin
-/// - foreground notifications
-/// - tap su notifica
-///
-/// ⚠️ NON usare nel main.dart
-/// ✔️ chiamare da HomeScreen.initState()
 class AndroidNotifications {
   static final FlutterLocalNotificationsPlugin
       _flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
-  static const AndroidNotificationChannel _channel =
-      AndroidNotificationChannel(
-    'high_importance_channel',
-    'Notifiche Importanti',
+  static const AndroidNotificationChannel _channel = AndroidNotificationChannel(
+    'high_importance_channel', 
+    'Notifiche Importanti', 
     description: 'Canale per notifiche importanti',
     importance: Importance.high,
   );
 
-  /// Inizializza notifiche Android
   static Future<void> init(
     GlobalKey<NavigatorState> navigatorKey,
   ) async {
-    // Web / iOS: esci subito
     if (kIsWeb || !Platform.isAndroid) return;
 
-    // 1️⃣ Permessi
     final status = await Permission.notification.request();
     debugPrint('🔔 Android notification permission: $status');
 
-    // 2️⃣ Init local notifications
-    const androidSettings =
-        AndroidInitializationSettings('ic_notification');
+    const androidSettings = AndroidInitializationSettings('ic_notification');
+    const initSettings = InitializationSettings(android: androidSettings);
 
-    final initSettings =
-        const InitializationSettings(android: androidSettings);
-
+    // CORREZIONE 1: "settings:" è un parametro nominato (richiesto nella v20+)
     await _flutterLocalNotificationsPlugin.initialize(
-      initSettings,
-      onDidReceiveNotificationResponse: (response) {
+      settings: initSettings, 
+      onDidReceiveNotificationResponse: (NotificationResponse response) {
         final payload = response.payload;
         if (payload == null) return;
 
@@ -66,7 +51,6 @@ class AndroidNotifications {
       },
     );
 
-    // 3️⃣ Crea canale (Android 8+)
     final androidImpl =
         _flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>();
@@ -75,18 +59,18 @@ class AndroidNotifications {
       await androidImpl.createNotificationChannel(_channel);
     }
 
-    // 4️⃣ Foreground messages
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       debugPrint('📩 FG message: ${message.messageId}');
 
+      // CORREZIONE 2: Tutti i parametri di "show" ora sono nominati (id:, title:, body:, notificationDetails:)
       _flutterLocalNotificationsPlugin.show(
-        message.hashCode,
-        message.notification?.title,
-        message.notification?.body,
-        NotificationDetails(
+        id: message.hashCode,
+        title: message.notification?.title ?? 'Nuovo Messaggio',
+        body: message.notification?.body ?? '',
+        notificationDetails: NotificationDetails(
           android: AndroidNotificationDetails(
-            _channel.id,
-            _channel.name,
+            _channel.id, 
+            _channel.name, 
             channelDescription: _channel.description,
             importance: Importance.high,
             priority: Priority.high,
@@ -97,20 +81,27 @@ class AndroidNotifications {
       );
     });
 
-    // 5️⃣ Tap da background / terminated
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
-      debugPrint('📩 Notification opened');
+      debugPrint('📩 Notification opened from BACKGROUND');
       _handleNavigation(navigatorKey, message.data);
     });
 
-    // 6️⃣ NOVITÀ: Genera il token e salvalo nel database per i nuovi utenti
+    RemoteMessage? initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+    if (initialMessage != null) {
+      debugPrint('📩 Notification opened from TERMINATED');
+      
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await Future.delayed(const Duration(milliseconds: 300));
+        _handleNavigation(navigatorKey, initialMessage.data);
+      });
+    }
+
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid != null) {
         final String? token = await FirebaseMessaging.instance.getToken();
-        
+
         if (token != null) {
-          debugPrint('📲 Token generato: $token');
           await FirebaseFirestore.instance.collection('tokens').doc(token).set({
             'uid': uid,
             'platform': 'android',
@@ -119,9 +110,8 @@ class AndroidNotifications {
           }, SetOptions(merge: true));
         }
 
-        // Se il token dovesse cambiare in futuro, lo aggiorniamo
         FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
-           await FirebaseFirestore.instance.collection('tokens').doc(newToken).set({
+          await FirebaseFirestore.instance.collection('tokens').doc(newToken).set({
             'uid': uid,
             'platform': 'android',
             'type': 'fcm',
@@ -134,57 +124,45 @@ class AndroidNotifications {
     }
   }
 
-/// Gestisce la navigazione in base al payload
   static Future<void> _handleNavigation(
     GlobalKey<NavigatorState> navigatorKey,
-    Map<String, dynamic> data,
+    Map<dynamic, dynamic> data,
   ) async {
     final type = data['type'];
     final chatId = data['chatId'];
 
-    // Accettiamo sia i nuovi match che i nuovi messaggi!
     if ((type == 'new_chat' || type == 'new_message') && chatId != null) {
       
       final context = navigatorKey.currentContext;
       if (context == null) return;
 
-      final currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser == null) return;
+      // RECUPERIAMO TUTTO DIRETTAMENTE DALLA NOTIFICA, ZERO TEMPO DI ATTESA!
+      final otherUserId = data['otherUserId'] ?? '';
+      final otherUserName = data['otherUserName'] ?? 'Utente';
+      final otherUserPhotoUrl = data['otherUserPhotoUrl'] ?? '';
 
-      try {
-        // 1. Chiediamo al volo a Firebase: "Chi c'è in questa chat?"
-        final chatDoc = await FirebaseFirestore.instance.collection('chats').doc(chatId).get();
-        if (!chatDoc.exists) return;
+      if (otherUserId.isEmpty) return; // Se per caso manca l'id, blocchiamo
 
-        final participants = List<String>.from(chatDoc.data()?['participants'] ?? []);
-        final otherUserId = participants.firstWhere((id) => id != currentUser.uid, orElse: () => '');
-        if (otherUserId.isEmpty) return;
+      bool isAlreadyInChat = false;
+      Navigator.popUntil(context, (route) {
+        if (route.settings.name == '/chat_$chatId') { 
+          isAlreadyInChat = true;
+        }
+        return true;
+      });
 
-        // 2. Chiediamo: "Come si chiama e che foto ha l'altro utente?"
-        final userDoc = await FirebaseFirestore.instance.collection('users').doc(otherUserId).get();
-        final userData = userDoc.data() ?? {};
-        final name = userData['name'] as String? ?? 'Utente';
-        
-        final rawPhotos = userData['photoUrls'] as List<dynamic>? ?? [];
-        final validPhotos = rawPhotos
-            .where((url) => url != null && url.toString().isNotEmpty)
-            .map((url) => url.toString())
-            .toList();
-        final photoUrl = validPhotos.isNotEmpty ? validPhotos.first : '';
-
-        // 3. BOOM! Entriamo direttamente nella chat con tutti i dati corretti!
+      if (!isAlreadyInChat) {
         Navigator.of(context).push(
           MaterialPageRoute(
+            settings: RouteSettings(name: '/chat_$chatId'),
             builder: (_) => ChatScreen(
               chatId: chatId,
               otherUserId: otherUserId,
-              otherUserName: name,
-              otherUserPhotoUrl: photoUrl,
+              otherUserName: otherUserName,
+              otherUserPhotoUrl: otherUserPhotoUrl,
             ),
           ),
         );
-      } catch (e) {
-        debugPrint('❌ Errore durante l\'apertura della chat da notifica: $e');
       }
     }
   }

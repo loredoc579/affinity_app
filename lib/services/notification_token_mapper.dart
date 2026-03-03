@@ -16,15 +16,15 @@ class NotificationTokenMapper {
     _fcm.onTokenRefresh.listen(_handleTokenRefresh);
   }
 
-  Future<void> _handleAuthChange(User? user) async {
+Future<void> _handleAuthChange(User? user) async {
     final token = await _fcm.getToken();
     if (token == null) return;
     final doc = _db.collection('tokens').doc(token);
     if (user != null) {
       await doc.set({
         'uid': user.uid,
-        'type': 'fcm',                            // <— campo “tipo”
-        'platform': Platform.operatingSystem,     // esempio: 'android' o 'ios'
+        'type': 'fcm',                            
+        'platform': Platform.operatingSystem,     
         'createdAt': FieldValue.serverTimestamp(),
       });
     } else {
@@ -37,8 +37,8 @@ class NotificationTokenMapper {
     if (user != null) {
       await _db.collection('tokens').doc(newToken).set({
         'uid': user.uid,
-        'type': 'fcm',                            // <— campo “tipo”
-        'platform': Platform.operatingSystem,     // esempio: 'android' o 'ios'
+        'type': 'fcm',                            
+        'platform': Platform.operatingSystem,     
         'createdAt': FieldValue.serverTimestamp(),
       });
     }

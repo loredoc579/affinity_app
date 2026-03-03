@@ -52,6 +52,18 @@ export const onMessageCreated = onDocumentCreated(
       .get();
     const senderName = senderDoc.data()?.name || "Un utente";
 
+    const senderData = senderDoc.data();
+    let senderPhoto = "";
+    if (
+      senderData?.photoUrls &&
+      Array.isArray(senderData.photoUrls) &&
+      senderData.photoUrls.length > 0
+    ) {
+      senderPhoto = senderData.photoUrls[0];
+    } else if (senderData?.photoUrl) {
+      senderPhoto = senderData.photoUrl;
+    }
+
     // 2. Prendi il token FCM del destinatario
     const tokensSnap = await admin.firestore().collection("tokens")
       .where("uid", "==", receiverId)
@@ -61,7 +73,7 @@ export const onMessageCreated = onDocumentCreated(
 
     const allTokens = tokensSnap.docs.map((d) => d.id);
 
-    // 3. Invia la notifica Push
+    // 3. Invia la notifica Push con PRIORITÀ ALTA
     const messages: admin.messaging.Message[] = allTokens.map((token) => ({
       token,
       notification: {
@@ -71,6 +83,26 @@ export const onMessageCreated = onDocumentCreated(
       data: {
         type: "new_message",
         chatId: chatId,
+        otherUserId: senderId,
+        otherUserName: senderName,
+        otherUserPhotoUrl: senderPhoto,
+      },
+      // --- IL TURBO PER ANDROID ---
+      android: {
+        priority: "high",
+        notification: {
+          channelId: "high_importance_channel",
+          // Opzionale, utile per Android 8+
+        },
+      },
+      // --- IL TURBO PER IOS ---
+      apns: {
+        payload: {
+          aps: {
+            contentAvailable: true,
+            sound: "default",
+          },
+        },
       },
     }));
 

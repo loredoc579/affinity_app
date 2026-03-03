@@ -33,7 +33,7 @@ class ChatScreen extends StatefulWidget {
   _ChatScreenState createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver{
   late final DatabaseReference _connectionsRef;
   late final DatabaseReference _lastChangedRef;
   late final DatabaseReference _activeChatRef;
@@ -87,6 +87,8 @@ class _ChatScreenState extends State<ChatScreen> {
         .collection('messages')
         .orderBy('timestamp', descending: true)
         .snapshots();
+
+    WidgetsBinding.instance.addObserver(this);
   }
 
 // Controlla il campo di testo e usa un Timer per capire quando ti fermi
@@ -121,6 +123,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     // Rimuove l'ascoltatore e imposta "sta scrivendo" a falso prima di chiudere
     _textController.removeListener(_onTextChanged);
     _typingTimer?.cancel();
@@ -129,6 +132,20 @@ class _ChatScreenState extends State<ChatScreen> {
     _activeChatRef.remove();
     _textController.dispose();
     super.dispose();
+  }
+
+@override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    if (state == AppLifecycleState.resumed) {
+      // L'app è completamente visibile: accendiamo il radar
+      _activeChatRef.set(widget.chatId);
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      // L'app è a schermo spento, ridotta a icona o chiusa: spegniamo il radar!
+      // (Abbiamo tolto "inactive" per evitare conflitti con l'apertura della tastiera)
+      _activeChatRef.remove();
+    }
   }
 
   // --- NUOVE FUNZIONI AUDIO ---

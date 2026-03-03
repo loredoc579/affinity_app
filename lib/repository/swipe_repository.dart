@@ -17,7 +17,11 @@ class SwipeRepository {
     int pageSize = 30,
   }) async {
     debugPrint('👉 [3. REPO] Sto per chiamare Firebase. Filtri in mano: $uiFilters');
-    final callable = _functions.httpsCallable('getProfiles');
+    final callable = _functions.httpsCallable(
+      'getProfiles',
+      // Diamo fino a 60 secondi di tempo per rispondere (ottimo per reti lente o vecchi dispositivi)
+      options: HttpsCallableOptions(timeout: const Duration(seconds: 60)), 
+    );
     
     try {
       // 1. Controllo connessione
