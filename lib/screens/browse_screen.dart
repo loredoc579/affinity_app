@@ -1,83 +1,93 @@
-import 'package:affinity_app/widgets/heart_progress_indicator.dart';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'filtered_users_screen.dart'; 
 
-import '../widgets/safe_avatar.dart';
-
-/// Schermata di esplorazione: mostra tutti i profili in una griglia 2 colonne
 class BrowseScreen extends StatelessWidget {
   const BrowseScreen({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Sfoglia Utenti'),
-      ),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance.collection('users').snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return Center(child: HeartProgressIndicator(
-              size: 60.0,
-              color: Theme.of(context).colorScheme.primary,
-            ));
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text('Errore: ${snapshot.error}'));
-          }
-          final docs = snapshot.data?.docs ?? [];
-          if (docs.isEmpty) {
-            return const Center(child: Text('Nessun profilo disponibile'));
-          }
-          return GridView.builder(
-            padding: const EdgeInsets.all(12),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              childAspectRatio: 0.75,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
+    // Abbiamo aggiunto "Tutti i profili" come prima opzione!
+    final List<Map<String, dynamic>> categories = [
+      {'title': 'Tutti i profili', 'keyword': 'all', 'icon': Icons.people_alt, 'color': Colors.blue},
+      {'title': 'Amore vero', 'keyword': 'amore', 'icon': Icons.favorite, 'color': Colors.redAccent},
+      {'title': 'Un caffè', 'keyword': 'caffè', 'icon': Icons.local_cafe, 'color': Colors.brown},
+      {'title': 'Sport', 'keyword': 'sport', 'icon': Icons.sports_tennis, 'color': Colors.green},
+      {'title': 'Serata', 'keyword': 'festa', 'icon': Icons.nightlife, 'color': Colors.purpleAccent},
+    ];
+
+    return Padding( // <-- NIENTE SCAFFOLD, NIENTE APPBAR! Solo il contenuto.
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Cosa stai cercando?',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: GridView.builder(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
+                childAspectRatio: 0.85,
+              ),
+              itemCount: categories.length,
+              itemBuilder: (context, index) {
+                final cat = categories[index];
+                return _buildCategoryCard(
+                  context,
+                  title: cat['title'],
+                  keyword: cat['keyword'],
+                  icon: cat['icon'],
+                  color: cat['color'],
+                );
+              },
             ),
-            itemCount: docs.length,
-            itemBuilder: (context, index) {
-              final data = docs[index].data();
-              final name = data['name'] as String? ?? '—';
-              final age = data['age']?.toString() ?? '—';
-              final photoUrl = data['photoUrl'] as String?;
-              return Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 3,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    SafeAvatar(
-                      radius: 40,
-                      url: photoUrl ?? '',
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      name,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '$age anni',
-                      style: const TextStyle(color: Colors.grey),
-                    ),
-                  ],
-                ),
-              );
-            },
-          );
-        },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryCard(BuildContext context, {
+    required String title,
+    required String keyword,
+    required IconData icon,
+    required Color color,
+  }) {
+    return GestureDetector(
+      onTap: () {
+        // Naviga alla pagina dei risultati
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => FilteredUsersScreen(
+              categoryTitle: title,
+              interestKeyword: keyword,
+            ),
+          ),
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withOpacity(0.5), width: 2),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 50, color: color),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }

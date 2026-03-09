@@ -18,6 +18,7 @@ import '../services/presence_service.dart';
 import '../widgets/heart_progress_indicator.dart';
 import '../main.dart'; 
 
+import 'browse_screen.dart'; 
 import 'chat_list_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart'; 
@@ -207,7 +208,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
 
       // --- 4. SCRITTURA SU FIREBASE (SOLO SE NECESSARIO) ---
-if (shouldUpdateDb) {
+      if (shouldUpdateDb) {
         String city = "Sconosciuta";
         try {
           List<Placemark> placemarks = await placemarkFromCoordinates(_position!.latitude, _position!.longitude);
@@ -248,7 +249,7 @@ if (shouldUpdateDb) {
         } catch (e) {
           debugPrint("⚠️ Geocoding stream fallito, uso Sconosciuta");
         }
-        
+
         await FirebaseFirestore.instance.collection('users').doc(uid).update({
           'location.position': GeoPoint(newPosition.latitude, newPosition.longitude),
           'location.city': city,
@@ -433,6 +434,7 @@ return BlocListener<NetworkCubit, NetworkStatus>(
                 onNavTap: _onNavTap,
                 navIndex: _navIndex,
               ),
+              const BrowseScreen(),
               const ChatListScreen(),
               const ProfileScreen(),
             ];
@@ -449,9 +451,13 @@ return BlocListener<NetworkCubit, NetworkStatus>(
                     );
                   },
                 ),
-                // ----------------------------------------------------
-                title: const Text('Affinity', style: TextStyle(color: Colors.pink, fontWeight: FontWeight.bold)),
-                centerTitle: true,
+                title: Text(
+                  _navIndex == 1 ? 'Esplora' : 'Affinity', 
+                  style: TextStyle(
+                    color: _navIndex == 1 ? Colors.black87 : Colors.pink, 
+                    fontWeight: FontWeight.bold
+                  )
+                ),                centerTitle: true,
                 backgroundColor: Colors.white,
                 elevation: 0,
                 actions: [
@@ -460,7 +466,7 @@ return BlocListener<NetworkCubit, NetworkStatus>(
                       icon: const Icon(Icons.tune, color: Colors.black87),
                       onPressed: _showFilters,
                     ),
-                  if (_navIndex == 2)
+                  if (_navIndex == 3)
                     IconButton(
                       icon: const Icon(Icons.logout, color: Colors.black87),
                       onPressed: () async {
@@ -474,49 +480,71 @@ return BlocListener<NetworkCubit, NetworkStatus>(
               ),
               body: IndexedStack(index: _navIndex, children: pages),
               bottomNavigationBar: BottomNavigationBar(
-                currentIndex: _navIndex,
-                onTap: _onNavTap,
-                showSelectedLabels: false,
-                showUnselectedLabels: false,
-                selectedItemColor: Colors.pink,
-                unselectedItemColor: Colors.grey,
-                items: [
-                  const BottomNavigationBarItem(icon: Icon(Icons.style), label: 'Swipe'),
-                  BottomNavigationBarItem(
-                    icon: StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance.collection('chats')
-                          .where('participants', arrayContains: FirebaseAuth.instance.currentUser?.uid)
-                          .snapshots(),
-                      builder: (context, snapshot) {
-                        int unread = 0;
-                        if (snapshot.hasData) {
-                          final uid = FirebaseAuth.instance.currentUser?.uid;
-                          for (var doc in snapshot.data!.docs) {
-                            final data = doc.data() as Map<String, dynamic>;
-                            
-                            final isDeleted = data['deleted'] == true;
-                            
-                            if (!isDeleted) {
-                              final readBy = List<String>.from(data['readBy'] as List<dynamic>? ?? []);
-                              // Se il mio ID non è nell'array dei letti, c'è un messaggio nuovo!
-                              if (uid != null && !readBy.contains(uid)) {
-                                unread++;
-                              }
-                            }
-                          }
-                        }
-                        return Badge(
-                          isLabelVisible: unread > 0,
-                          label: Text(unread.toString()),
-                          child: const Icon(Icons.chat_bubble_outline),
-                        );
+                      currentIndex: _navIndex,
+                      onTap: (index) {
+                        setState(() {
+                          _navIndex = index;
+                        });
                       },
+                      selectedItemColor: Theme.of(context).primaryColor,
+                      unselectedItemColor: Colors.grey,
+                      showSelectedLabels: false,
+                      showUnselectedLabels: false,
+                      type: BottomNavigationBarType.fixed, // Mantiene le icone ben allineate
+                      items: [
+                        // Indice 0: Home (Fiamma)
+                        const BottomNavigationBarItem(
+                          icon: Icon(Icons.local_fire_department),
+                          label: 'Home',
+                        ),
+                        
+                        // Indice 1: Esplora (NUOVO - Griglia/Bussola)
+                        const BottomNavigationBarItem(
+                          icon: Icon(Icons.grid_view), // Puoi usare anche Icons.explore
+                          label: 'Esplora',
+                        ),
+                        
+                        // Indice 2: Chat (Il tuo codice originale intatto!)
+                        BottomNavigationBarItem(
+                          icon: StreamBuilder<QuerySnapshot>(
+                            stream: FirebaseFirestore.instance
+                                .collection('chats')
+                                .where('participants', arrayContains: FirebaseAuth.instance.currentUser?.uid)
+                                .snapshots(),
+                            builder: (context, snapshot) {
+                              int unread = 0;
+                              if (snapshot.hasData) {
+                                final uid = FirebaseAuth.instance.currentUser?.uid;
+                                for (var doc in snapshot.data!.docs) {
+                                  final data = doc.data() as Map<String, dynamic>;
+                                  
+                                  final isDeleted = data['deleted'] == true;
+                                  
+                                  if (!isDeleted) {
+                                    final readBy = List<String>.from(data['readBy'] as List<dynamic>? ?? []);
+                                    if (uid != null && !readBy.contains(uid)) {
+                                      unread++;
+                                    }
+                                  }
+                                }
+                              }
+                              return Badge(
+                                isLabelVisible: unread > 0,
+                                label: Text(unread.toString()),
+                                child: const Icon(Icons.chat_bubble_outline),
+                              );
+                            },
+                          ),
+                          label: 'Chat',
+                        ),
+                        
+                        // Indice 3: Profilo
+                        const BottomNavigationBarItem(
+                          icon: Icon(Icons.person_outline), 
+                          label: 'Profile'
+                        ),
+                      ],
                     ),
-                    label: 'Chat',
-                  ),
-                  const BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: 'Profile'),
-                ],
-              ),
             );
           },
         ),
