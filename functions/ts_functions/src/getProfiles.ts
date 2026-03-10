@@ -143,6 +143,8 @@ function filterByDistanceAndExclusions(
     .filter((p) => {
       if (excluded.has(p.uid)) return false; // Scarta chi hai già swipato
 
+      if (p.data.isPaused === true) return false;
+
       if (!hasDistanceFilter) return true;
 
       // Se non abbiamo la posizione dell'altro utente, lo scartiamo

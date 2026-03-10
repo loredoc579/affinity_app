@@ -16,7 +16,6 @@ export const onMessageCreated = onDocumentCreated(
     const text = messageData.text;
     const {chatId} = event.params;
 
-    // 1. Recupera i dati della chat per capire chi è il destinatario
     const chatDoc = await admin.firestore()
       .collection("chats")
       .doc(chatId)
@@ -26,11 +25,29 @@ export const onMessageCreated = onDocumentCreated(
     const chatData = chatDoc.data();
     const participants = chatData?.participants || [];
 
-    // Trova l'ID di chi DEVE ricevere la notifica (cioè non il mittente)
     const receiverId = participants.find((id: string) => id !== senderId);
     if (!receiverId) return;
 
-    // --- NUOVO CONTROLLO: L'UTENTE È GIÀ NELLA CHAT? ---
+    // --- CONTROLLO PREFERENZE NOTIFICHE ---
+    const receiverDoc = await admin
+      .firestore()
+      .collection("users")
+      .doc(receiverId)
+      .get();
+    const receiverData = receiverDoc.data();
+
+    // Se la preferenza esiste ed è esplicitamente false, non inviamo nulla!
+    const wantsMessageAlerts =
+      receiverData?.notificationPrefs?.newMessages ?? true;
+    if (wantsMessageAlerts === false) {
+      console.log(
+        `L'utente ${receiverId} ha disattivato le notifiche dei messaggi. ` +
+        "Abortito."
+      );
+      return;
+    }
+    // ---------------------------------------------------
+
     const activeChatSnap = await admin
       .database()
       .ref(`status/${receiverId}/activeChat`)
@@ -39,21 +56,20 @@ export const onMessageCreated = onDocumentCreated(
     if (activeChat === chatId) {
       console.log(
         `L'utente ${receiverId} è già nella chat ${chatId}. ` +
-        "Salto la notifica push."
+        "Non invio la notifica push."
       );
-      return; // Blocchiamo la notifica alla radice!
+      return;
     }
 
-    // Recupera anche il nome del mittente per un bel popup
     const senderDoc = await admin
       .firestore()
       .collection("users")
       .doc(senderId)
       .get();
-    const senderName = senderDoc.data()?.name || "Un utente";
-
     const senderData = senderDoc.data();
+    const senderName = senderData?.name || "Qualcuno";
     let senderPhoto = "";
+
     if (
       senderData?.photoUrls &&
       Array.isArray(senderData.photoUrls) &&
@@ -64,7 +80,6 @@ export const onMessageCreated = onDocumentCreated(
       senderPhoto = senderData.photoUrl;
     }
 
-    // 2. Prendi il token FCM del destinatario
     const tokensSnap = await admin.firestore().collection("tokens")
       .where("uid", "==", receiverId)
       .get();
@@ -73,7 +88,6 @@ export const onMessageCreated = onDocumentCreated(
 
     const allTokens = tokensSnap.docs.map((d) => d.id);
 
-    // 3. Invia la notifica Push con PRIORITÀ ALTA
     const messages: admin.messaging.Message[] = allTokens.map((token) => ({
       token,
       notification: {
@@ -87,15 +101,12 @@ export const onMessageCreated = onDocumentCreated(
         otherUserName: senderName,
         otherUserPhotoUrl: senderPhoto,
       },
-      // --- IL TURBO PER ANDROID ---
       android: {
         priority: "high",
         notification: {
           channelId: "high_importance_channel",
-          // Opzionale, utile per Android 8+
         },
       },
-      // --- IL TURBO PER IOS ---
       apns: {
         payload: {
           aps: {
@@ -106,8 +117,6 @@ export const onMessageCreated = onDocumentCreated(
       },
     }));
 
-    await Promise.allSettled(
-      messages.map((msg) => admin.messaging().send(msg))
-    );
+    await Promise.all(messages.map((msg) => admin.messaging().send(msg)));
   }
 );

@@ -5,6 +5,9 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 import 'admin_verifications_screen.dart'; 
 import 'match_screen.dart'; // <-- IMPORT FONDAMENTALE PER IL TEST
+import 'account_settings_screen.dart';
+import 'notification_settings_screen.dart';
+import 'admin_data_requests_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -276,80 +279,138 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  @override
+@override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Impostazioni'), backgroundColor: Colors.white, foregroundColor: Colors.black, elevation: 0),
-      body: ListView(
-        children: [
-          const ListTile(leading: Icon(Icons.person), title: Text('Account'), subtitle: Text('Gestisci il tuo profilo')),
-          const ListTile(leading: Icon(Icons.notifications), title: Text('Notifiche'), subtitle: Text('Preferenze messaggi e match')),
+      appBar: AppBar(
+        title: const Text('Impostazioni'), 
+        backgroundColor: Colors.white, 
+        foregroundColor: Colors.black, 
+        elevation: 0
+      ),
+      // --- IL NOSTRO STREAM BUILDER PER LEGGERE IL RUOLO ---
+      body: StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance.collection('users').doc(user?.uid).snapshots(),
+        builder: (context, snapshot) {
           
-          // --- SEZIONE SVILUPPATORE ---
-          const Padding(
-            padding: EdgeInsets.only(top: 24, left: 16, bottom: 8),
-            child: Text('🛠️ MENU SVILUPPATORE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.2)),
-          ),
-          Container(
-            color: Colors.red.shade50,
-            child: Column(
-              children: [
-                // --- BOTTONE ADMIN VERIFICHE ---
-                ListTile(
-                  leading: const Icon(Icons.admin_panel_settings, color: Colors.purple),
-                  title: const Text('Admin: Verifiche Identità', style: TextStyle(color: Colors.purple, fontWeight: FontWeight.bold)),
-                  subtitle: const Text('Approva o rifiuta i selfie degli utenti', style: TextStyle(color: Colors.purple, fontSize: 12)),
-                  onTap: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminVerificationsScreen()));
-                  },
+          // Se sta ancora caricando, mostriamo una schermata bianca (o un loader)
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator(color: Colors.pink));
+          }
+
+          // Estraiamo il ruolo dal database. Se non c'è, di default è 'user'
+          String role = 'user';
+          if (snapshot.hasData && snapshot.data!.exists) {
+            final data = snapshot.data!.data() as Map<String, dynamic>?;
+            role = data?['role'] ?? 'user';
+          }
+
+          return ListView(
+            children: [
+              // --- VOCI MENU SEMPRE VISIBILI A TUTTI ---
+              ListTile(
+                leading: const Icon(Icons.person), 
+                title: const Text('Account'), 
+                subtitle: const Text('Gestisci la tua visibilità e sicurezza'),
+                onTap: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const AccountSettingsScreen()));
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.notifications), 
+                title: const Text('Notifiche'), 
+                subtitle: const Text('Preferenze messaggi e match'),
+                onTap: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationSettingsScreen()));
+                },
+              ),              
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.exit_to_app),
+                title: const Text("Esci (Logout)"),
+                onTap: () => FirebaseAuth.instance.signOut(),
+              ),
+
+              // --- SEZIONE SVILUPPATORE (Visibile SOLO se sei admin) ---
+              if (role == 'admin') ...[
+                const Padding(
+                  padding: EdgeInsets.only(top: 24, left: 16, bottom: 8),
+                  child: Text('🛠️ MENU SVILUPPATORE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.2)),
                 ),
-                const Divider(height: 1),
-                // --- BOTTONE: CARICA CATEGORIE ---
-                ListTile(
-                  leading: const Icon(Icons.cloud_upload, color: Colors.blue),
-                  title: const Text('Carica Categorie Esplora', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
-                  subtitle: const Text('Invia le categorie base al database', style: TextStyle(color: Colors.blue, fontSize: 12)),
-                  onTap: () => _uploadCategories(context),
-                ),
-                const Divider(height: 1),              
-                ListTile(
-                  leading: const Icon(Icons.favorite, color: Colors.pink),
-                  title: const Text('Test Animazione Match', style: TextStyle(color: Colors.pink, fontWeight: FontWeight.bold)),
-                  subtitle: const Text('Simula la schermata di match senza swipe', style: TextStyle(color: Colors.pink, fontSize: 12)),
-                  onTap: () => _testMatchScreen(context),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.hd, color: Colors.red),
-                  title: const Text('Applica Foto HD al DB', style: TextStyle(color: Colors.red)),
-                  subtitle: const Text('Risolve foto bianche (non tocca la Safe List)', style: TextStyle(color: Colors.red, fontSize: 12)),
-                  onTap: () => _ripopolaImmaginiDatabase(context),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.refresh, color: Colors.red),
-                  title: const Text('Azzera i miei Swipe', style: TextStyle(color: Colors.red)),
-                  subtitle: const Text('Esclude gli utenti nella Safe List', style: TextStyle(color: Colors.red, fontSize: 12)),
-                  onTap: () => _azzeraSwipe(context),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.cleaning_services, color: Colors.orange),
-                  title: const Text('Svuota Cache Immagini', style: TextStyle(color: Colors.orange)),
-                  subtitle: const Text('Usa se il tuo avatar non si aggiorna', style: TextStyle(color: Colors.orange, fontSize: 12)),
-                  onTap: () => _svuotaCacheManuale(context),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.warning_amber_rounded, color: Colors.red),
-                  title: const Text('Hard Reset (Chat + Swipe)', style: TextStyle(color: Colors.purple, fontWeight: FontWeight.bold)),
-                  subtitle: const Text('Rispetta le regole della Safe List', style: TextStyle(color: Colors.purple, fontSize: 12)),
-                  onTap: () => _hardResetDev(context),
+                Container(
+                  color: Colors.red.shade50,
+                  child: Column(
+                    children: [
+                      // --- BOTTONE ADMIN VERIFICHE ---
+                      ListTile(
+                        leading: const Icon(Icons.data_usage, color: Colors.orange),
+                        title: const Text('Admin: Richieste Dati', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+                        subtitle: const Text('Gestisci le richieste GDPR degli utenti', style: TextStyle(color: Colors.orange, fontSize: 12)),
+                        onTap: () {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminDataRequestsScreen()));
+                        },
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.admin_panel_settings, color: Colors.purple),
+                        title: const Text('Admin: Verifiche Identità', style: TextStyle(color: Colors.purple, fontWeight: FontWeight.bold)),
+                        subtitle: const Text('Approva o rifiuta i selfie degli utenti', style: TextStyle(color: Colors.purple, fontSize: 12)),
+                        onTap: () {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminVerificationsScreen()));
+                        },
+                      ),
+                      const Divider(height: 1),
+                      // --- BOTTONE: CARICA CATEGORIE ---
+                      ListTile(
+                        leading: const Icon(Icons.cloud_upload, color: Colors.blue),
+                        title: const Text('Carica Categorie Esplora', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+                        subtitle: const Text('Invia le categorie base al database', style: TextStyle(color: Colors.blue, fontSize: 12)),
+                        onTap: () => _uploadCategories(context),
+                      ),
+                      const Divider(height: 1),              
+                      ListTile(
+                        leading: const Icon(Icons.favorite, color: Colors.pink),
+                        title: const Text('Test Animazione Match', style: TextStyle(color: Colors.pink, fontWeight: FontWeight.bold)),
+                        subtitle: const Text('Simula la schermata di match senza swipe', style: TextStyle(color: Colors.pink, fontSize: 12)),
+                        onTap: () => _testMatchScreen(context),
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.hd, color: Colors.red),
+                        title: const Text('Applica Foto HD al DB', style: TextStyle(color: Colors.red)),
+                        subtitle: const Text('Risolve foto bianche (non tocca la Safe List)', style: TextStyle(color: Colors.red, fontSize: 12)),
+                        onTap: () => _ripopolaImmaginiDatabase(context),
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.refresh, color: Colors.red),
+                        title: const Text('Azzera i miei Swipe', style: TextStyle(color: Colors.red)),
+                        subtitle: const Text('Esclude gli utenti nella Safe List', style: TextStyle(color: Colors.red, fontSize: 12)),
+                        onTap: () => _azzeraSwipe(context),
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.cleaning_services, color: Colors.orange),
+                        title: const Text('Svuota Cache Immagini', style: TextStyle(color: Colors.orange)),
+                        subtitle: const Text('Usa se il tuo avatar non si aggiorna', style: TextStyle(color: Colors.orange, fontSize: 12)),
+                        onTap: () => _svuotaCacheManuale(context),
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.warning_amber_rounded, color: Colors.red),
+                        title: const Text('Hard Reset (Chat + Swipe)', style: TextStyle(color: Colors.purple, fontWeight: FontWeight.bold)),
+                        subtitle: const Text('Rispetta le regole della Safe List', style: TextStyle(color: Colors.purple, fontSize: 12)),
+                        onTap: () => _hardResetDev(context),
+                      ),
+                    ],
+                  ),
                 ),
               ],
-            ),
-          ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }

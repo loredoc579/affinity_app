@@ -66,6 +66,7 @@ dependencies:
   audioplayers: ^6.5.1
   path_provider: ^2.1.5
   reorderable_grid_view: ^2.2.8
+  intl: ^0.20.2
 
 dev_dependencies:
   flutter_test:
