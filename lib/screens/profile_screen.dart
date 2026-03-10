@@ -43,7 +43,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     'Lettura', 'Videogiochi', 'Cucina', 'Animali', 'Arte'
   ];
   final _songController = TextEditingController();
-  final _promptAnswerController = TextEditingController();
   List<PromptEntry> _promptsList = [];
   final List<String> _availablePrompts = [
     'Due verità e una bugia...',
@@ -54,6 +53,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
   ];
   List<String?> photoUrls = List<String?>.filled(9, null, growable: true);
   bool isLoading = true;
+  // VARIABILI PER LE PREFERENZE
+  String? _relationshipType;
+  String? _relationshipGoal;
+  // --- VARIABILI VERIFICA PROFILO ---
+  String? _verificationStatus; // Può essere null, 'pending' o 'approved'
+  bool _isVerified = false;
+
+  // Le opzioni tra cui l'utente può scegliere
+  final List<String> _relTypeOptions = [
+    'Monogama', 
+    'Poliamore', 
+    'Relazione Aperta', 
+    'Ancora non lo so'
+  ];
+  
+  final List<String> _relGoalOptions = [
+    'Relazione seria', 
+    'Niente di serio', 
+    'Niente di serio, ma vediamo come va', 
+    'Seria, ma vediamo come va', 
+    'Nuove amicizie'
+  ];
 
   // --- CALCOLO COMPLETEZZA (Spaccato a 100) ---
   int _calculateCompleteness() {
@@ -106,6 +127,10 @@ Future<void> loadProfile() async {
         _jobController.text = data?['jobTitle'] ?? '';
         _bioController.text = data?['bio'] ?? '';
         _city = (data?['location'] as Map<String, dynamic>?)?['city'] as String? ?? 'Sconosciuta';
+        _relationshipType = data?['relationshipType'] as String?;
+        _relationshipGoal = data?['relationshipGoal'] as String?;
+        _verificationStatus = data?['verificationStatus'] as String?;
+        _isVerified = data?['isVerified'] == true;
 
         // --- CARICA ICEBREAKER ---
         _songController.text = data?['favoriteSong'] ?? '';
@@ -170,6 +195,8 @@ Future<void> loadProfile() async {
             .where((p) => p.question.isNotEmpty && p.controller.text.trim().isNotEmpty)
             .map((p) => {'question': p.question, 'answer': p.controller.text.trim()})
             .toList(),
+        'relationshipType': _relationshipType,
+        'relationshipGoal': _relationshipGoal,
       }, SetOptions(merge: true));
       
       ScaffoldMessenger.of(context).showSnackBar(
@@ -268,6 +295,67 @@ Future<void> loadProfile() async {
     }
   }
 
+  // --- FUNZIONE PER INVIARE IL SELFIE DI VERIFICA ---
+  Future<void> _uploadVerificationSelfie() async {
+    if (user == null) return;
+    
+    final picker = ImagePicker();
+    // Chiediamo all'utente di scattare una foto dalla FOTOCAMERA FRONTALE
+    final XFile? selfie = await picker.pickImage(
+      source: ImageSource.camera, 
+      preferredCameraDevice: CameraDevice.front, 
+    );
+    
+    if (selfie == null) return; // L'utente ha chiuso la fotocamera senza scattare
+    
+    setState(() => isLoading = true);
+    
+    try {
+      // 1. Comprimiamo l'immagine per non occupare troppo spazio sul database
+      Uint8List bytes;
+      if (kIsWeb) {
+        bytes = await selfie.readAsBytes();
+      } else {
+        final raw = await selfie.readAsBytes();
+        bytes = await FlutterImageCompress.compressWithList(
+          raw, minWidth: 600, minHeight: 600, quality: 80, format: CompressFormat.jpeg,
+        );
+      }
+      
+      // 2. Carichiamo la foto in una cartella speciale "verifications" su Firebase Storage
+      final ref = FirebaseStorage.instance.ref().child('verifications/${user!.uid}.jpg');
+      await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+      final downloadUrl = await ref.getDownloadURL();
+      
+      // 3. Aggiorniamo il profilo dicendo che la verifica è in attesa
+      await FirebaseFirestore.instance.collection('users').doc(user!.uid).set({
+        'verificationStatus': 'pending',
+        'verificationImageUrl': downloadUrl,
+      }, SetOptions(merge: true));
+      
+      setState(() {
+        _verificationStatus = 'pending'; // Aggiorniamo la UI
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Selfie inviato! Profilo in fase di verifica.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Errore durante l\'invio: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      setState(() => isLoading = false);
+    }
+  }
+
   Future<void> removeImage(int index) async {
     if (photoUrls[index] == null || user == null) return;
     setState(() => isLoading = true);
@@ -322,12 +410,16 @@ Future<void> loadProfile() async {
     // Calcoliamo la percentuale in tempo reale ad ogni re-build
     final int completeness = _calculateCompleteness();
 
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch, // Allarga tutto al massimo
-        children: [
+    return RefreshIndicator(
+      color: Colors.pink,
+      onRefresh: loadProfile, // Richiama la funzione per scaricare i dati aggiornati
+      child: SingleChildScrollView(
+        // Cambiato in AlwaysScrollableScrollPhysics per permettere il pull-to-refresh sempre
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch, // Allarga tutto al massimo
+          children: [
           
           // --- 1. BARRA DI COMPLETEZZA ---
           Container(
@@ -368,6 +460,60 @@ Future<void> loadProfile() async {
               ],
             ),
           ),
+          // --- BANNER DI VERIFICA IDENTITÀ ---
+          const SizedBox(height: 16),
+            if (_isVerified)
+              // STATO 1: VERIFICATO (Spunta Blu)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.blue.withOpacity(0.3))),
+                child: const Row(
+                  children: [
+                    Icon(Icons.verified, color: Colors.blue, size: 28),
+                    SizedBox(width: 12),
+                    Expanded(child: Text("Il tuo profilo è verificato!", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold))),
+                  ],
+                ),
+              )
+            else if (_verificationStatus == 'pending')
+              // STATO 2: IN ATTESA (Clessidra Arancione)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.orange.withOpacity(0.3))),
+                child: const Row(
+                  children: [
+                    Icon(Icons.hourglass_empty, color: Colors.orange, size: 28),
+                    SizedBox(width: 12),
+                    Expanded(child: Text("Verifica in corso... stiamo controllando il tuo selfie.", style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold))),
+                  ],
+                ),
+              )
+            else
+              // STATO 3: NON VERIFICATO (Pulsante per scattare la foto)
+              InkWell(
+                onTap: _uploadVerificationSelfie,
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300)),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.how_to_reg, color: Colors.grey, size: 28),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text("Verifica il tuo profilo", style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 16)),
+                            Text("Scatta un selfie per ottenere la spunta blu.", style: TextStyle(color: Colors.grey, fontSize: 13)),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.camera_alt, color: Colors.pink),
+                    ],
+                  ),
+                ),
+              ),
           const SizedBox(height: 24),
 
           // --- 2. LE MIE FOTO (Multi-Upload & Drag & Drop) ---
@@ -522,6 +668,47 @@ Future<void> loadProfile() async {
                 ],
               ),
             ),
+          ),
+          const SizedBox(height: 16),
+          const Text("Cosa stai cercando?", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          
+          // Menu a tendina: Tipo di Relazione
+          DropdownButtonFormField<String>(
+            decoration: InputDecoration(
+              labelText: 'Tipo di relazione',
+              prefixIcon: const Icon(Icons.people_alt_outlined, color: Colors.pink),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            value: _relationshipType,
+            items: _relTypeOptions.map((type) {
+              return DropdownMenuItem(value: type, child: Text(type));
+            }).toList(),
+            onChanged: (value) {
+              setState(() {
+                _relationshipType = value;
+              });
+            },
+          ),
+          
+          const SizedBox(height: 16),
+          
+          // Menu a tendina: Obiettivo
+          DropdownButtonFormField<String>(
+            decoration: InputDecoration(
+              labelText: 'Obiettivo',
+              prefixIcon: const Icon(Icons.track_changes, color: Colors.pink),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            value: _relationshipGoal,
+            items: _relGoalOptions.map((goal) {
+              return DropdownMenuItem(value: goal, child: Text(goal));
+            }).toList(),
+            onChanged: (value) {
+              setState(() {
+                _relationshipGoal = value;
+              });
+            },
           ),
           const SizedBox(height: 16),
 
@@ -699,6 +886,7 @@ Future<void> loadProfile() async {
           ),
           const SizedBox(height: 40),
         ],
+        ),
       ),
     );
   }

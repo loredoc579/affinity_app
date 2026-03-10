@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
+import 'admin_verifications_screen.dart'; 
 import 'match_screen.dart'; // <-- IMPORT FONDAMENTALE PER IL TEST
 
 class SettingsScreen extends StatelessWidget {
@@ -198,6 +199,48 @@ class SettingsScreen extends StatelessWidget {
     }
   }
 
+  // --- CARICA CATEGORIE "ESPLORA" SU FIREBASE ---
+  Future<void> _uploadCategories(BuildContext context) async {
+    try {
+      // Le nostre categorie pronte per essere inviate
+      final categories = [
+        {'title': 'Tutti i profili', 'keyword': 'all', 'iconName': 'people', 'colorHex': '#2196F3', 'order': 1},
+        {'title': 'Amore vero', 'keyword': 'amore', 'iconName': 'favorite', 'colorHex': '#FF5252', 'order': 2},
+        {'title': 'Un caffè', 'keyword': 'caffè', 'iconName': 'cafe', 'colorHex': '#795548', 'order': 3},
+        {'title': 'Sport', 'keyword': 'sport', 'iconName': 'sports', 'colorHex': '#4CAF50', 'order': 4},
+        {'title': 'Serata', 'keyword': 'festa', 'iconName': 'party', 'colorHex': '#E040FB', 'order': 5},
+      ];
+
+      // Usiamo un Batch per inviarle tutte insieme in un decimo di secondo
+      final batch = FirebaseFirestore.instance.batch();
+      final collection = FirebaseFirestore.instance.collection('browse_categories');
+
+      for (var cat in categories) {
+        // Usiamo la keyword (es. 'amore') come ID del documento. 
+        // Così se clicchi il tasto 10 volte, non crea duplicati ma sovrascrive!
+        final docRef = collection.doc(cat['keyword'] as String);
+        batch.set(docRef, cat);
+      }
+
+      await batch.commit();
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Categorie caricate con successo!'), 
+            backgroundColor: Colors.green
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Errore: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
   // --- FUNZIONE: SVUOTA CACHE MANUALE ---
   Future<void> _svuotaCacheManuale(BuildContext context) async {
     await DefaultCacheManager().emptyCache();
@@ -251,6 +294,24 @@ class SettingsScreen extends StatelessWidget {
             color: Colors.red.shade50,
             child: Column(
               children: [
+                // --- BOTTONE ADMIN VERIFICHE ---
+                ListTile(
+                  leading: const Icon(Icons.admin_panel_settings, color: Colors.purple),
+                  title: const Text('Admin: Verifiche Identità', style: TextStyle(color: Colors.purple, fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Approva o rifiuta i selfie degli utenti', style: TextStyle(color: Colors.purple, fontSize: 12)),
+                  onTap: () {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminVerificationsScreen()));
+                  },
+                ),
+                const Divider(height: 1),
+                // --- BOTTONE: CARICA CATEGORIE ---
+                ListTile(
+                  leading: const Icon(Icons.cloud_upload, color: Colors.blue),
+                  title: const Text('Carica Categorie Esplora', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Invia le categorie base al database', style: TextStyle(color: Colors.blue, fontSize: 12)),
+                  onTap: () => _uploadCategories(context),
+                ),
+                const Divider(height: 1),              
                 ListTile(
                   leading: const Icon(Icons.favorite, color: Colors.pink),
                   title: const Text('Test Animazione Match', style: TextStyle(color: Colors.pink, fontWeight: FontWeight.bold)),
@@ -280,7 +341,7 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 const Divider(height: 1),
                 ListTile(
-                  leading: const Icon(Icons.warning_amber_rounded, color: Colors.purple),
+                  leading: const Icon(Icons.warning_amber_rounded, color: Colors.red),
                   title: const Text('Hard Reset (Chat + Swipe)', style: TextStyle(color: Colors.purple, fontWeight: FontWeight.bold)),
                   subtitle: const Text('Rispetta le regole della Safe List', style: TextStyle(color: Colors.purple, fontSize: 12)),
                   onTap: () => _hardResetDev(context),
