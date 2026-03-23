@@ -101,6 +101,7 @@ class SwipeCard extends StatelessWidget {
                 children: [
                   // ===== FOTO PRINCIPALE + OVERLAY ANIMATI =====
                   Stack(
+                    fit: StackFit.loose,
                     alignment: Alignment.bottomLeft,
                     children: [
                       CachedNetworkImage(
@@ -110,6 +111,12 @@ class SwipeCard extends StatelessWidget {
                         fit: BoxFit.cover,
                         placeholder: (_, __) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
                         errorWidget: (_, __, ___) => const Center(child: Icon(Icons.error, size: 40)),
+                      ),
+
+                      Positioned(
+                        top: 20,
+                        left: 20,
+                        child: _buildAffinityBadge(user.matchScore ?? 0),
                       ),
                       
                       // Gradient per leggibilità
@@ -278,6 +285,32 @@ class SwipeCard extends StatelessWidget {
             style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: isLeft ? Colors.red : Colors.green),
           ),
         ),
+      ),
+    );
+  }
+
+  // Aggiungi questo in fondo alla classe SwipeCard, prima dell'ultima graffa }
+  Widget _buildAffinityBadge(int score) {
+    if (score <= 0) return const SizedBox.shrink();
+
+    final bool isHigh = score >= 70;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: isHigh ? Colors.pink.withOpacity(0.9) : Colors.black.withOpacity(0.6),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white24, width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(isHigh ? Icons.bolt : Icons.insights, color: Colors.white, size: 14),
+          const SizedBox(width: 4),
+          Text(
+            "$score% Affinità",
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+          ),
+        ],
       ),
     );
   }

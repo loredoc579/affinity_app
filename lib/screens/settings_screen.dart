@@ -8,6 +8,7 @@ import 'match_screen.dart'; // <-- IMPORT FONDAMENTALE PER IL TEST
 import 'account_settings_screen.dart';
 import 'notification_settings_screen.dart';
 import 'admin_data_requests_screen.dart';
+import 'admin_mock_users_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -403,6 +404,15 @@ class SettingsScreen extends StatelessWidget {
                         title: const Text('Hard Reset (Chat + Swipe)', style: TextStyle(color: Colors.purple, fontWeight: FontWeight.bold)),
                         subtitle: const Text('Rispetta le regole della Safe List', style: TextStyle(color: Colors.purple, fontSize: 12)),
                         onTap: () => _hardResetDev(context),
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.group_add, color: Colors.deepPurple),
+                        title: const Text('Admin: Genera Profili Finti', style: TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold)),
+                        subtitle: const Text('Popola il DB per testare Affinità e Swipe', style: TextStyle(color: Colors.deepPurple, fontSize: 12)),
+                        onTap: () {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminMockUsersScreen()));
+                        },
                       ),
                     ],
                   ),

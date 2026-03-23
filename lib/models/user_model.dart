@@ -13,6 +13,7 @@ class UserModel extends Equatable {
   final String gender;
   final String favoriteSong; 
   final List<Map<String, dynamic>> prompts;
+  final int? matchScore;
 
   const UserModel({
     required this.id,
@@ -26,6 +27,7 @@ class UserModel extends Equatable {
     required this.gender,
     this.favoriteSong = '', 
     this.prompts = const [],
+    this.matchScore,
   });
 
   factory UserModel.fromMap(Map<String, dynamic> map) {
@@ -84,6 +86,7 @@ class UserModel extends Equatable {
               .map((p) => Map<String, dynamic>.from(p)) // Le converte una per una in modo sicuro
               .toList() 
           : [],
+      matchScore: map['matchScore'] as int?,
     );
   }
 
