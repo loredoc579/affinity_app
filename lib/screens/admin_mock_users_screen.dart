@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:math';
+import '../constants/hobbies_dictionary.dart';
 
 class AdminMockUsersScreen extends StatefulWidget {
   const AdminMockUsersScreen({Key? key}) : super(key: key);
@@ -15,12 +16,6 @@ class _AdminMockUsersScreenState extends State<AdminMockUsersScreen> {
   // --- DATI REALI PER IL TEST ---
   final List<String> _maleNames = ['Marco', 'Luca', 'Alessandro', 'Matteo', 'Giovanni', 'Davide', 'Simone', 'Andrea'];
   final List<String> _femaleNames = ['Giulia', 'Chiara', 'Martina', 'Sara', 'Alice', 'Elena', 'Francesca', 'Sofia'];
-  
-  final List<String> _hobbies = [
-    'Fotografia', 'Palestra', 'Viaggi', 'Netflix', 'Cucina', 
-    'Musica', 'Trekking', 'Videogiochi', 'Lettura', 'Arte', 
-    'Cani', 'Gatti', 'Vino', 'Sushi', 'Moda'
-  ];
 
   final List<String> _malePhotos = [
     'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=500&auto=format&fit=crop',
@@ -141,8 +136,10 @@ class _AdminMockUsersScreenState extends State<AdminMockUsersScreen> {
               ? _malePhotos[random.nextInt(_malePhotos.length)]
               : _femalePhotos[random.nextInt(_femalePhotos.length)];
 
-          List<String> shuffledHobbies = List.from(_hobbies)..shuffle();
-          int hobbyCount = random.nextInt(4) + 1;
+          List<String> allAvailableHobbies = HobbiesDictionary.allHobbies;
+          List<String> shuffledHobbies = List.from(allAvailableHobbies)..shuffle();
+          
+          int hobbyCount = random.nextInt(10) + 1; // Sceglie da 1 a 10 hobby casuali
           List<String> userHobbies = shuffledHobbies.take(hobbyCount).toList();
 
           // Aumentiamo un po' lo sparpagliamento (raggio più ampio per 500+ utenti)

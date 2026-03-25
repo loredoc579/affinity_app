@@ -14,6 +14,7 @@ import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 
 import '../widgets/heart_progress_indicator.dart';
 import 'profile_preview_screen.dart';
+import '../constants/hobbies_dictionary.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -51,6 +52,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     'Non potrei mai vivere senza...',
     'Il mio peggior appuntamento è stato...'
   ];
+  // Lista degli hobby attualmente selezionati dall'utente
   List<String?> photoUrls = List<String?>.filled(9, null, growable: true);
   bool isLoading = true;
   // VARIABILI PER LE PREFERENZE
@@ -75,6 +77,64 @@ class _ProfileScreenState extends State<ProfileScreen> {
     'Seria, ma vediamo come va', 
     'Nuove amicizie'
   ];
+
+  Widget _buildHobbiesSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: HobbiesDictionary.categorizedHobbies.entries.map((entry) {
+        String categoryName = entry.key;
+        List<String> hobbiesList = entry.value;
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Titolo della Categoria (es. "Sport & Fitness")
+              Text(
+                categoryName, 
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.pink)
+              ),
+              const SizedBox(height: 8),
+              
+              // Le "Pillole" degli hobby
+              Wrap(
+                spacing: 8.0, // Spazio orizzontale tra le pillole
+                runSpacing: 4.0, // Spazio verticale se vanno a capo
+                children: hobbiesList.map((hobby) {
+                  bool isSelected = _selectedHobbies.contains(hobby);
+                  
+                  return FilterChip(
+                    label: Text(hobby),
+                    selected: isSelected,
+                    selectedColor: Colors.pink.shade100,
+                    checkmarkColor: Colors.pink,
+                    backgroundColor: Colors.grey.shade100,
+                    onSelected: (bool selected) {
+                      setState(() {
+                        if (selected) {
+                          // Limite opzionale: massimo 10 hobby per utente
+                          if (_selectedHobbies.length < 10) {
+                            _selectedHobbies.add(hobby);
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Puoi selezionare massimo 10 hobby!'))
+                            );
+                          }
+                        } else {
+                          _selectedHobbies.remove(hobby); // Deseleziona
+                        }
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
 
   // --- CALCOLO COMPLETEZZA (Spaccato a 100) ---
   int _calculateCompleteness() {
@@ -731,34 +791,10 @@ Future<void> loadProfile() async {
                     onChanged: (_) => setState(() {}),
                     decoration: InputDecoration(labelText: "Bio", hintText: "Raccontaci qualcosa di interessante...", alignLabelWithHint: true, filled: true, fillColor: Colors.grey.shade50, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
                   ),
-                  const SizedBox(height: 16),
-                  const Text('I miei Hobbies', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black87)),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8.0,
-                    runSpacing: 4.0,
-                    children: _availableHobbies.map((hobby) {
-                      final isSelected = _selectedHobbies.contains(hobby);
-                      return FilterChip(
-                        label: Text(hobby),
-                        selected: isSelected,
-                        selectedColor: Colors.pink.shade100,
-                        checkmarkColor: Colors.pink,
-                        backgroundColor: Colors.grey.shade100,
-                        side: BorderSide.none,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                        onSelected: (bool selected) {
-                          setState(() {
-                            if (selected) {
-                              if (_selectedHobbies.length < 5) _selectedHobbies.add(hobby);
-                            } else {
-                              _selectedHobbies.remove(hobby);
-                            }
-                          });
-                        },
-                      );
-                    }).toList(),
-                  ),
+                  const SizedBox(height: 24),
+                  const Text('I miei Interessi', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
+                  const SizedBox(height: 12),
+                  _buildHobbiesSelector(),
                 ],
               ),
             ),

@@ -1,6 +1,6 @@
 import {onCall, HttpsError} from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
-import {Timestamp, FieldPath} from "firebase-admin/firestore";
+import {FieldPath} from "firebase-admin/firestore";
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -8,6 +8,86 @@ if (!admin.apps.length) {
 
 const DEFAULT_PAGE_SIZE = 30;
 const db = admin.firestore();
+
+const categoryMap: Record<string, string> = {
+  // Sport & Fitness
+  "Palestra": "Sport",
+  "Trekking": "Sport",
+  "Corsa": "Sport",
+  "Yoga": "Sport",
+  "Calcio": "Sport",
+  "Nuoto": "Sport",
+  "Arrampicata": "Sport",
+  // Creatività
+  "Fotografia": "Arte",
+  "Pittura": "Arte",
+  "Scrittura": "Arte",
+  "Design": "Arte",
+  "Teatro": "Arte",
+  "Fai da te": "Arte",
+  // Intrattenimento
+  "Netflix": "Intrattenimento",
+  "Cinema": "Intrattenimento",
+  "Videogiochi": "Intrattenimento",
+  "Anime": "Intrattenimento",
+  "Giochi da Tavolo": "Intrattenimento",
+  "Concerti": "Intrattenimento",
+  // Food
+  "Sushi": "Food",
+  "Vino": "Food",
+  "Cucinare": "Food",
+  "Birra Artigianale": "Food",
+  "Cibo di Strada": "Food",
+  "Caffè": "Food",
+  // Stile di Vita
+  "Viaggi": "Life",
+  "Cani": "Life",
+  "Gatti": "Life",
+  "Astrologia": "Life",
+  "Sostenibilità": "Life",
+  "Moda": "Life",
+};
+
+/**
+ * Calculates an advanced match score based on hobbies and their categories.
+ * @param {string[]} myHobbies - The hobbies of the calling user.
+ * @param {string[]} theirHobbies - The hobbies of the other user.
+ * @return {number} The calculated match score (0-100).
+ */
+function calculateAdvancedScore(
+  myHobbies: string[],
+  theirHobbies: string[]
+): number {
+  if (
+    !Array.isArray(myHobbies) ||
+    !Array.isArray(theirHobbies) ||
+    myHobbies.length === 0 ||
+    theirHobbies.length === 0
+  ) {
+    return 0;
+  }
+
+  let totalPoints = 0;
+  const maxPossiblePoints = myHobbies.length * 10;
+
+  myHobbies.forEach((myHobby) => {
+    if (theirHobbies.includes(myHobby)) {
+      totalPoints += 10; // 10 punti per hobby identico
+    } else {
+      const myCat = categoryMap[myHobby];
+      // Controlla se l'altro ha almeno un hobby della stessa categoria
+      const hasSameCategory = theirHobbies.some(
+        (h) => categoryMap[h] === myCat
+      );
+      if (hasSameCategory) {
+        totalPoints += 4; // 4 punti per stessa categoria
+      }
+    }
+  });
+
+  const finalScore = (totalPoints / maxPossiblePoints) * 100;
+  return Math.min(Math.round(finalScore), 100); // Massimo 100%
+}
 
 /**
  * Haversine formula: distanza in km tra due coordinate
@@ -64,6 +144,7 @@ interface UserDocData extends admin.firestore.DocumentData {
   isVerified?: boolean;
   isPaused?: boolean;
   location?: Location;
+  rankingScore?: number;
 }
 
 interface UserProfile extends UserDocData {
@@ -141,13 +222,17 @@ function processProfiles(
       const data = d.data();
       const geo = (data.location as Location)?.position;
 
-      // Calcolo affinità
-      let matchScore = 0;
-      const theirHobbies = (data.hobbies as string[]) || [];
-      if (myHobbies.length > 0 && theirHobbies.length > 0) {
-        const common = myHobbies.filter((h) => theirHobbies.includes(h));
-        matchScore = Math.round((common.length / myHobbies.length) * 100);
-      }
+      // 🌟 Calcolo affinità AVANZATO e SICURO
+      const rawTheirHobbies = data.hobbies;
+
+      // Force conversion to Array to avoid "some is not a function" crash
+      const safeMyHobbies: string[] = Array.isArray(myHobbies) ? myHobbies : [];
+      const safeTheirHobbies: string[] = Array.isArray(rawTheirHobbies) ?
+        rawTheirHobbies :
+        [];
+
+      const matchScore = calculateAdvancedScore(
+        safeMyHobbies, safeTheirHobbies);
 
       return {
         uid: d.id,
@@ -220,8 +305,20 @@ export const getProfiles = onCall<Req>(async (req) => {
     uiFilters?.maxDistance
   );
 
-  // 6) ORDINAMENTO: Mettiamo i profili con affinità più alta in cima
-  validProfiles.sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
+  // 🌟 6) ORDINAMENTO: Mix tra Popolarità (rankingScore) e Affinità (matchScore)
+  validProfiles.sort((a, b) => {
+    // Se un utente è nuovo e non ha ancora un ranking, gli diamo 50 (la media)
+    const rankA = a.rankingScore ?? 50;
+    const rankB = b.rankingScore ?? 50;
+
+    // L'algoritmo finale: 50% importanza all'affinità,
+    // 50% alla popolarità dell'utente
+    const totalScoreA = (rankA * 0.5) + ((a.matchScore || 0) * 0.5);
+    const totalScoreB = (rankB * 0.5) + ((b.matchScore || 0) * 0.5);
+
+    // Chi ha il totale più alto va in cima al mazzo
+    return totalScoreB - totalScoreA;
+  });
 
   // 7) Paginazione
   const finalPageSize = pageSize && pageSize > 0 ? pageSize : DEFAULT_PAGE_SIZE;
@@ -229,12 +326,10 @@ export const getProfiles = onCall<Req>(async (req) => {
 
   // 8) Cursore per la pagina successiva
   let nextCursor = null;
-  if (profilesToReturn.length > 0) {
-    const lastUid = profilesToReturn[profilesToReturn.length - 1].uid;
-    const lastIdx = rawDocs.findIndex((d) => d.id === lastUid);
-    if (lastIdx !== -1 && lastIdx < rawDocs.length - 1) {
-      nextCursor = rawDocs[lastIdx].id;
-    }
+  // Se abbiamo scaricato esattamente il limite massimo (150),
+  // significa che molto probabilmente ci sono altre pagine nel database
+  if (rawDocs.length === 150) {
+    nextCursor = rawDocs[rawDocs.length - 1].id;
   }
 
   return {profiles: profilesToReturn, nextCursor};
@@ -246,11 +341,6 @@ export const getProfiles = onCall<Req>(async (req) => {
  * @return {Promise<Set<string>>} A set of excluded user IDs.
  */
 async function computeExcludedIds(me: string): Promise<Set<string>> {
-  const now = Timestamp.now().toDate();
-  const ts = Timestamp.fromDate(
-    new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  );
-
   const excluded = new Set<string>([me]);
 
   // Escludi Chat (Match o cancellate)
@@ -262,14 +352,23 @@ async function computeExcludedIds(me: string): Promise<Set<string>> {
     if (other) excluded.add(other);
   }
 
-  // Escludi Swipes di oggi
-  const swipeSnap = await db.collection("swipes")
-    .where("from", "==", me)
-    .where("timestamp", ">=", ts)
+  // --- INIZIO LOGICA SCADENZA SWIPE (1 GIORNO) ---
+  // Calcoliamo la data e l'ora di esattamente 24 ore fa
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const oneDayAgoTimestamp = admin.firestore.Timestamp.fromDate(oneDayAgo);
+
+  // Peschiamo solo i voti (Ricevute) più recenti di 24 ore fa
+  const recentSwipesSnap = await db.collection("users")
+    .doc(me)
+    .collection("swipes")
+    .where("timestamp", ">", oneDayAgoTimestamp)
     .get();
-  for (const d of swipeSnap.docs) {
-    excluded.add(d.get("to") as string);
+
+  for (const doc of recentSwipesSnap.docs) {
+    // Aggiungiamo l'ID dell'utente votato alla lista degli esclusi
+    excluded.add(doc.id);
   }
+  // --- FINE LOGICA SCADENZA SWIPE ---
 
   return excluded;
 }

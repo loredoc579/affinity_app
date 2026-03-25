@@ -7,10 +7,12 @@ import 'package:cloud_functions/cloud_functions.dart';
 
 import '../repository/swipe_repository.dart';
 import '../services/swipe_service.dart';
+import '../services/ranking_service.dart';
 import '../models/user_model.dart';
 import 'network_cubit.dart';
 import 'swipe_event.dart';
 import 'swipe_state.dart';
+
 
 class SwipeBloc extends Bloc<SwipeEvent, SwipeState> {
   final SwipeRepository _repo;
@@ -25,20 +27,36 @@ class SwipeBloc extends Bloc<SwipeEvent, SwipeState> {
 
     // 2. Swipe a Destra (Like)
     on<SwipeLike>((event, emit) async {
+      final myUid = _auth.currentUser!.uid;
+      
+      // 🌟 REGISTRA IL VOTO PRIMA DELLA LOGICA DI MATCH
+      RankingService.registerSwipe(currentUserId: myUid, targetUserId: event.userId, action: 'like');
+
       await _handleSwipe(event.userId, isSuper: false, emit: emit);
     });
 
     // 3. Superlike (Da pulsante)
     on<SwipeSuperlike>((event, emit) async {
+      final myUid = _auth.currentUser!.uid;
+      
+      // 🌟 REGISTRA IL VOTO
+      RankingService.registerSwipe(currentUserId: myUid, targetUserId: event.userId, action: 'superlike');
+
       await _handleSwipe(event.userId, isSuper: true, emit: emit);
     });
 
     // 4. Swipe a Sinistra (Nope)
     on<SwipeNope>((event, emit) async {
-      try {
-        await _service.sendNope(event.userId);
-      } catch (e) {
-        debugPrint("Errore Nope: $e");
+      final myUid = _auth.currentUser!.uid;
+      
+      // 🌟 REGISTRA IL VOTO NEGATIVO
+      RankingService.registerSwipe(currentUserId: myUid, targetUserId: event.userId, action: 'nope');
+      
+      // Continua con la tua logica esistente per rimuovere l'utente dalla UI
+      if (state is SwipeLoaded) {
+        final currentUsers = List<UserModel>.from((state as SwipeLoaded).users);
+        currentUsers.removeWhere((u) => u.id == event.userId);
+        emit(SwipeLoaded(users: currentUsers));
       }
     });
   }
