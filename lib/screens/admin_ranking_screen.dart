@@ -14,7 +14,10 @@ class AdminRankingScreen extends StatefulWidget {
 class _AdminRankingScreenState extends State<AdminRankingScreen> {
   // Variabile per memorizzare il filtro scelto. Partiamo da "Tutti"
   String _selectedGender = 'Tutti'; 
+  String _searchText = "";
 
+  final TextEditingController _searchController = TextEditingController();
+  
   // Le opzioni del nostro menu a tendina
   final List<String> _genderOptions = ['Tutti', 'male', 'female', 'other'];
 
@@ -79,131 +82,191 @@ class _AdminRankingScreenState extends State<AdminRankingScreen> {
   );
 }
 
-// Helper per le icone del log
-Widget _getIconForAction(String action) {
-  switch (action) {
-    case 'like': return const Icon(Icons.favorite, color: Colors.green);
-    case 'superlike': return const Icon(Icons.star, color: Colors.blue);
-    case 'nope': return const Icon(Icons.close, color: Colors.red);
-    default: return const Icon(Icons.help_outline);
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: SizedBox(
+        height: 40, // 1. Forza l'altezza massima a 40 pixel
+        child: TextField(
+          textInputAction: TextInputAction.search,
+          controller: _searchController,
+          textAlignVertical: TextAlignVertical.center, // Mantiene il testo centrato verticalmente
+          onChanged: (value) {
+            setState(() {
+              _searchText = value;
+            });
+          },
+          onSubmitted: (value) {
+            FocusScope.of(context).unfocus();
+          },
+          style: const TextStyle(fontSize: 14),
+          decoration: InputDecoration(
+            // 2. Passiamo da labelText a hintText
+            hintText: 'Cerca utente (es: Marco)',
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), // Rimuovi il vertical: 0
+            
+            // 3. Riduciamo lo spazio occupato dalle icone (fondamentale)
+            prefixIconConstraints: const BoxConstraints(minWidth: 40, maxHeight: 40),
+            suffixIconConstraints: const BoxConstraints(minWidth: 40, maxHeight: 40),
+            
+            prefixIcon: const Icon(Icons.search, size: 18), // Icona leggermente più piccola
+            suffixIcon: _searchText.isNotEmpty 
+              ? IconButton(
+                  padding: EdgeInsets.zero, // Toglie il padding interno dell'IconButton
+                  icon: const Icon(Icons.clear, size: 18),
+                  onPressed: () {
+                    setState(() {
+                      _searchController.clear();
+                      _searchText = "";
+                    });
+                  },
+                )
+              : null,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        ),
+      ),
+    );
   }
-}
+
+  // Helper per le icone del log
+  Widget _getIconForAction(String action) {
+    switch (action) {
+      case 'like': return const Icon(Icons.favorite, color: Colors.green);
+      case 'superlike': return const Icon(Icons.star, color: Colors.blue);
+      case 'nope': return const Icon(Icons.close, color: Colors.red);
+      default: return const Icon(Icons.help_outline);
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Classifica Popolarità'),
-        backgroundColor: Colors.pink,
-        foregroundColor: Colors.white,
-      ),
-      backgroundColor: Colors.grey.shade100,
-      body: Column(
-        children: [
-          // --- 1. SEZIONE FILTRI IN ALTO ---
-          Container(
-            padding: const EdgeInsets.all(16),
-            color: Colors.white,
-            child: Row(
-              children: [
-                const Icon(Icons.filter_list, color: Colors.pink),
-                const SizedBox(width: 12),
-                const Text(
-                  'Filtra per genere:', 
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: DropdownButton<String>(
-                    value: _selectedGender,
-                    isExpanded: true,
-                    items: _genderOptions.map((String gender) {
-                      return DropdownMenuItem<String>(
-                        value: gender,
-                        child: Text(gender == 'male' ? 'Maschio' : 
-                                    gender == 'female' ? 'Femmina' : 
-                                    gender == 'other' ? 'Altro' : 'Tutti'),
-                      );
-                    }).toList(),
-                    onChanged: (newValue) {
-                      if (newValue != null) {
-                        setState(() {
-                          _selectedGender = newValue;
-                        });
-                      }
-                    },
+  // Avvolgiamo tutto in un GestureDetector per catturare i tocchi sullo sfondo
+  return GestureDetector(
+    behavior: HitTestBehavior.opaque,
+    onTap: () => FocusScope.of(context).unfocus(),
+    child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Classifica Popolarità'),
+          backgroundColor: Colors.pink,
+          foregroundColor: Colors.white,
+        ),
+        backgroundColor: Colors.grey.shade100,
+        body: Column(
+          children: [
+            _buildSearchBar(),
+            // --- 1. SEZIONE FILTRI IN ALTO ---
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              color: Colors.white,
+              child: Row(
+                children: [
+                  const Icon(Icons.filter_list, color: Colors.pink),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Filtra per genere:', 
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
                   ),
-                ),
-              ],
-            ),
-          ),
-          
-          // --- 2. SEZIONE CLASSIFICA (GRIGLIA) ---
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              // Costruiamo la query in base al filtro scelto
-              stream: _buildRankingQuery().snapshots(),
-              builder: (context, snapshot) {
-                // Controllo se sta caricando
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(color: Colors.pink));
-                }
-                
-                // Controllo se ci sono errori (es. Indice mancante)
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Text(
-                        'Errore (Probabilmente manca l\'indice su Firebase):\n${snapshot.error}',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.red),
-                      ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: DropdownButton<String>(
+                      value: _selectedGender,
+                      isExpanded: true,
+                      items: _genderOptions.map((String gender) {
+                        return DropdownMenuItem<String>(
+                          value: gender,
+                          child: Text(gender == 'male' ? 'Maschio' : 
+                                      gender == 'female' ? 'Femmina' : 
+                                      gender == 'other' ? 'Altro' : 'Tutti'),
+                        );
+                      }).toList(),
+                      onChanged: (newValue) {
+                        if (newValue != null) {
+                          setState(() {
+                            _selectedGender = newValue;
+                          });
+                        }
+                      },
                     ),
-                  );
-                }
-
-                final docs = snapshot.data?.docs ?? [];
-
-                if (docs.isEmpty) {
-                  return const Center(child: Text('Nessun utente trovato.'));
-                }
-
-                // Mostriamo i risultati in una griglia a 2 colonne
-                return GridView.builder(
-                  padding: const EdgeInsets.all(12),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2, // Quante colonne vogliamo
-                    crossAxisSpacing: 12, // Spazio orizzontale
-                    mainAxisSpacing: 12, // Spazio verticale
-                    childAspectRatio: 0.75, // Proporzione della "carta" (più alta che larga)
                   ),
-                  itemCount: docs.length,
-                  itemBuilder: (context, index) {
-                    final data = docs[index].data() as Map<String, dynamic>;
-                    
-                    // Estraiamo i dati in modo sicuro
-                    final name = data['name'] ?? 'Sconosciuto';
-                    final rankingScore = data['rankingScore'] ?? 50; // 50 è la media di base
-                    
-                    // Cerchiamo la prima foto disponibile
-                    String? imageUrl;
-                    if (data['photoUrl'] != null && data['photoUrl'] != '') {
-                      imageUrl = data['photoUrl'];
-                    } else if (data['photoUrls'] != null && (data['photoUrls'] as List).isNotEmpty) {
-                      imageUrl = data['photoUrls'][0];
-                    }
-
-                    return InkWell(
-                      onTap: () => _showScoreBreakdown(context, docs[index].id, name),
-                      child: _buildRankingCard(name, imageUrl, rankingScore, index + 1),
-                    );    
-                  },
-                );
-              },
+                ],
+              ),
             ),
-          ),
-        ],
+            
+            // --- 2. SEZIONE CLASSIFICA (GRIGLIA) ---
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                // Costruiamo la query in base al filtro scelto
+                stream: _buildRankingQuery().snapshots(),
+                builder: (context, snapshot) {
+                  // Controllo se sta caricando
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator(color: Colors.pink));
+                  }
+                  
+                  // Controllo se ci sono errori (es. Indice mancante)
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Text(
+                          'Errore (Probabilmente manca l\'indice su Firebase):\n${snapshot.error}',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                      ),
+                    );
+                  }
+
+                  final docs = snapshot.data?.docs ?? [];
+
+                  if (docs.isEmpty) {
+                    return const Center(child: Text('Nessun utente trovato.'));
+                  }
+
+                  // Mostriamo i risultati in una griglia a 2 colonne
+                  return GridView.builder(
+                    padding: const EdgeInsets.all(12),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2, // Quante colonne vogliamo
+                      crossAxisSpacing: 12, // Spazio orizzontale
+                      mainAxisSpacing: 12, // Spazio verticale
+                      childAspectRatio: 0.75, // Proporzione della "carta" (più alta che larga)
+                    ),
+                    itemCount: docs.length,
+                    itemBuilder: (context, index) {
+                      final data = docs[index].data() as Map<String, dynamic>;
+                      
+                      // Estraiamo i dati in modo sicuro
+                      final name = data['name'] ?? 'Sconosciuto';
+                      final rankingScore = data['rankingScore'] ?? 50; // 50 è la media di base
+                      
+                      // Cerchiamo la prima foto disponibile
+                      String? imageUrl;
+                      if (data['photoUrl'] != null && data['photoUrl'] != '') {
+                        imageUrl = data['photoUrl'];
+                      } else if (data['photoUrls'] != null && (data['photoUrls'] as List).isNotEmpty) {
+                        imageUrl = data['photoUrls'][0];
+                      }
+
+                      return InkWell(
+                        onTap: () => _showScoreBreakdown(context, docs[index].id, name),
+                        child: _buildRankingCard(name, imageUrl, rankingScore, index + 1),
+                      );    
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -212,14 +275,25 @@ Widget _getIconForAction(String action) {
   Query _buildRankingQuery() {
     Query query = FirebaseFirestore.instance.collection('users');
 
-    // Se non abbiamo selezionato "Tutti", aggiungiamo il filtro del genere
+    // Filtro Genere
     if (_selectedGender != 'Tutti') {
-      // Nota: assicurati che nel tuo DB il campo si chiami 'gender' e abbia i valori 'Male', 'Female', ecc.
       query = query.where('gender', isEqualTo: _selectedGender);
     }
 
-    // Ordiniamo sempre per rankingScore, dal più alto al più basso (descending: true)
-    return query.orderBy('rankingScore', descending: true).limit(50); // Limitiamo a 50 per non sovraccaricare il DB
+    // 🔍 RICERCA CASE-INSENSITIVE
+    if (_searchText.length >= 2) {
+      // 1. Trasformiamo la ricerca in minuscolo
+      String searchLower = _searchText.toLowerCase();
+      
+      // 2. Interroghiamo il campo name_lowercase
+      query = query
+          .where('name_lowercase', isGreaterThanOrEqualTo: searchLower)
+          .where('name_lowercase', isLessThanOrEqualTo: '$searchLower\uf8ff');
+    } else {
+      query = query.orderBy('rankingScore', descending: true);
+    }
+
+    return query.limit(50);
   }
 
   // Funzione che disegna la singola "carta" dell'utente

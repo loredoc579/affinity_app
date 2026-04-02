@@ -152,6 +152,7 @@ class _AdminMockUsersScreenState extends State<AdminMockUsersScreen> {
           
           batch.set(newDocRef, {
             'name': name,
+            'name_lowercase': name.toLowerCase(),
             'gender': isMale ? 'male' : 'female',
             'age': age,
             'bio': 'Ciao! Sono un profilo di test generato automaticamente. Scrivimi!',
@@ -167,6 +168,7 @@ class _AdminMockUsersScreenState extends State<AdminMockUsersScreen> {
               }
             },
             'isMock': true,
+            'rankingScore': 50,
             'createdAt': FieldValue.serverTimestamp(),
             'lastActive': FieldValue.serverTimestamp(),
           });
