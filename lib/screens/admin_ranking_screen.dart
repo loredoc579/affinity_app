@@ -12,6 +12,12 @@ class AdminRankingScreen extends StatefulWidget {
 }
 
 class _AdminRankingScreenState extends State<AdminRankingScreen> {
+  final ScrollController _scrollController = ScrollController();
+  List<DocumentSnapshot> _users = []; // Lista locale degli utenti
+  DocumentSnapshot? _lastDocument;    // L'ultimo utente caricato (per sapere da dove ripartire)
+  bool _isLoading = false;            // Per evitare doppie chiamate mentre carica
+  bool _hasMore = true;               // Per sapere se ci sono ancora utenti da caricare
+
   // Variabile per memorizzare il filtro scelto. Partiamo da "Tutti"
   String _selectedGender = 'Tutti'; 
   String _searchText = "";
@@ -20,6 +26,37 @@ class _AdminRankingScreenState extends State<AdminRankingScreen> {
   
   // Le opzioni del nostro menu a tendina
   final List<String> _genderOptions = ['Tutti', 'male', 'female', 'other'];
+
+  Future<void> _fetchUsers() async {
+    if (_isLoading || !_hasMore) return; // Se sta già caricando o non c'è altro, fermati
+
+    setState(() => _isLoading = true);
+
+    Query query = FirebaseFirestore.instance
+        .collection('users')
+        .orderBy('rankingScore', descending: true)
+        .limit(20);
+
+    // Se non è la prima volta, riparti da dopo l'ultimo documento
+    if (_lastDocument != null) {
+      query = query.startAfterDocument(_lastDocument!);
+    }
+
+    final snapshot = await query.get();
+
+    if (snapshot.docs.length < 20) {
+      _hasMore = false; // Se ne tornano meno di 20, significa che la lista è finita
+    }
+
+    if (snapshot.docs.isNotEmpty) {
+      _lastDocument = snapshot.docs.last;
+      setState(() {
+        _users.addAll(snapshot.docs); // Aggiungiamo i nuovi arrivati alla lista esistente
+      });
+    }
+
+    setState(() => _isLoading = false);
+  }
 
   void _showScoreBreakdown(BuildContext context, String userId, String userName) {
   showModalBottomSheet(
@@ -141,6 +178,19 @@ class _AdminRankingScreenState extends State<AdminRankingScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _fetchUsers(); // Carica i primi 20 all'avvio
+
+    _scrollController.addListener(() {
+      // Se mancano 200 pixel alla fine della lista, carica i successivi
+      if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+        _fetchUsers();
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
@@ -202,69 +252,61 @@ class _AdminRankingScreenState extends State<AdminRankingScreen> {
             
             // --- 2. SEZIONE CLASSIFICA (GRIGLIA) ---
             Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                // Costruiamo la query in base al filtro scelto
-                stream: _buildRankingQuery().snapshots(),
-                builder: (context, snapshot) {
-                  // Controllo se sta caricando
-                  if (snapshot.connectionState == ConnectionState.waiting) {
+              child: _users.isEmpty && _isLoading 
+                    // Mostriamo un caricamento centrale solo se la lista è vuota e stiamo caricando i primissimi dati
+                    ? const Center(child: CircularProgressIndicator(color: Colors.pink))             
+                    : _users.isEmpty
+                    // Se ha finito di caricare ma la lista è ancora vuota, non ci sono utenti
+                    ? const Center(child: Text('Nessun utente trovato.'))
+                    
+                    // Se invece abbiamo utenti, costruiamo la nostra griglia
+                    : GridView.builder(
+                        controller: _scrollController, // 🌟 FONDAMENTALE: Questo "ascolta" quando arrivi in fondo
+                        padding: const EdgeInsets.all(12),
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,          // 2 colonne
+                          crossAxisSpacing: 12,       // Spazio orizzontale tra le card
+                          mainAxisSpacing: 12,        // Spazio verticale tra le card
+                          childAspectRatio: 0.75,     // Proporzione (più alte che larghe)
+                        ),
+                        // Se _hasMore è true, aggiungiamo 1 elemento finto in fondo per mostrare il caricamento
+                        itemCount: _users.length + (_hasMore ? 1 : 0),
+                        itemBuilder: (context, index) {
+                              
+                  // Se l'indice è uguale alla lunghezza della lista, significa che siamo 
+                  // sull'elemento "finto" aggiuntivo: mostriamo la rotellina!
+                  if (index == _users.length) {
                     return const Center(child: CircularProgressIndicator(color: Colors.pink));
                   }
+
+                  // Estraiamo i dati dell'utente corrente dalla nostra lista
+                  final data = _users[index].data() as Map<String, dynamic>;
                   
-                  // Controllo se ci sono errori (es. Indice mancante)
-                  if (snapshot.hasError) {
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Text(
-                          'Errore (Probabilmente manca l\'indice su Firebase):\n${snapshot.error}',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.red),
-                        ),
-                      ),
-                    );
+                  // 1. Estrazione del nome (con fallback se manca)
+                  final name = data['name'] ?? 'Sconosciuto';
+                  
+                  // 2. Estrazione del punteggio (50 come media di base)
+                  final rankingScore = data['rankingScore'] ?? 50; 
+                  
+                  // 3. Estrazione sicura dell'immagine
+                  // Controlliamo prima se c'è 'photoUrl', altrimenti peschiamo la prima da 'photoUrls'
+                  String? imageUrl;
+                  if (data['photoUrl'] != null && data['photoUrl'] != '') {
+                    imageUrl = data['photoUrl'];
+                  } else if (data['photoUrls'] != null && (data['photoUrls'] as List).isNotEmpty) {
+                    imageUrl = data['photoUrls'][0];
                   }
 
-                  final docs = snapshot.data?.docs ?? [];
-
-                  if (docs.isEmpty) {
-                    return const Center(child: Text('Nessun utente trovato.'));
-                  }
-
-                  // Mostriamo i risultati in una griglia a 2 colonne
-                  return GridView.builder(
-                    padding: const EdgeInsets.all(12),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2, // Quante colonne vogliamo
-                      crossAxisSpacing: 12, // Spazio orizzontale
-                      mainAxisSpacing: 12, // Spazio verticale
-                      childAspectRatio: 0.75, // Proporzione della "carta" (più alta che larga)
-                    ),
-                    itemCount: docs.length,
-                    itemBuilder: (context, index) {
-                      final data = docs[index].data() as Map<String, dynamic>;
-                      
-                      // Estraiamo i dati in modo sicuro
-                      final name = data['name'] ?? 'Sconosciuto';
-                      final rankingScore = data['rankingScore'] ?? 50; // 50 è la media di base
-                      
-                      // Cerchiamo la prima foto disponibile
-                      String? imageUrl;
-                      if (data['photoUrl'] != null && data['photoUrl'] != '') {
-                        imageUrl = data['photoUrl'];
-                      } else if (data['photoUrls'] != null && (data['photoUrls'] as List).isNotEmpty) {
-                        imageUrl = data['photoUrls'][0];
-                      }
-
-                      return InkWell(
-                        onTap: () => _showScoreBreakdown(context, docs[index].id, name),
-                        child: _buildRankingCard(name, imageUrl, rankingScore, index + 1),
-                      );    
-                    },
-                  );
+                  // 4. Creiamo la card cliccabile
+                  return InkWell(
+                    // Al tocco, apriamo il dettaglio voti passando l'ID e il nome
+                    onTap: () => _showScoreBreakdown(context, _users[index].id, name),
+                    // L'indice + 1 ci dà la posizione in classifica (1°, 2°, 3°...)
+                    child: _buildRankingCard(name, imageUrl, rankingScore, index + 1),
+                  );    
                 },
               ),
-            ),
+            ),      
           ],
         ),
       ),
