@@ -9,6 +9,9 @@ import 'account_settings_screen.dart';
 import 'notification_settings_screen.dart';
 import 'admin_data_requests_screen.dart';
 import 'admin_mock_users_screen.dart';
+import 'admin_ranking_screen.dart';
+
+import '../services/ranking_service.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -280,7 +283,78 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-@override
+  void _confirmReset(BuildContext context) {
+    final messenger = ScaffoldMessenger.of(context);
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text("Sei sicuro?"),
+        content: const Text("Questa azione pulirà TUTTI i punteggi e i log dei voti. Potrebbe richiedere qualche secondo."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext), 
+            child: const Text("Annulla")
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              Navigator.pop(dialogContext); 
+              
+              // 1. Mostriamo il primo messaggio
+              messenger.hideCurrentSnackBar();
+              messenger.showSnackBar(
+                const SnackBar(
+                  content: Text("⏳ Reset profondo in corso... non chiudere l'app"),
+                  duration: Duration(seconds: 10), // Lo teniamo un po' di più
+                )
+              );
+
+              try {
+                debugPrint("🚀 Chiamata al servizio avviata...");
+                await RankingService.resetAllRankings();
+                
+                debugPrint("🏁 Il servizio ha completato l'operazione");
+
+                // Verifichiamo se il widget è ancora a schermo
+                if (!context.mounted) {
+                  debugPrint("⚠️ Il widget non è più montato, non posso mostrare la SnackBar");
+                  return;
+                }
+
+                // RIMUOVIAMO con forza il messaggio di attesa
+                messenger.removeCurrentSnackBar(); 
+
+                // MOSTRIAMO il messaggio verde
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text("✅ RESET COMPLETATO!"),
+                    backgroundColor: Colors.green,
+                    behavior: SnackBarBehavior.floating, // La rende più visibile
+                  )
+                );
+              } catch (e) {
+                debugPrint("❌ ERRORE DURANTE IL RESET: $e");
+                
+                if (!context.mounted) return;
+                
+                messenger.hideCurrentSnackBar();
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text("❌ Errore durante il reset: $e"),
+                    backgroundColor: Colors.red,
+                  )
+                );
+              }
+            }, 
+            child: const Text("SÌ, RESETTA TUTTO", style: TextStyle(color: Colors.white))
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
 
@@ -393,6 +467,19 @@ class SettingsScreen extends StatelessWidget {
                       ),
                       const Divider(height: 1),
                       ListTile(
+                        leading: const Icon(Icons.refresh, color: Colors.red),
+                        title: const Text(
+                          'Admin: RESET Classifica', 
+                          style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)
+                        ),
+                        subtitle: const Text('Riporta tutti i punteggi a 50'),
+                        onTap: () {
+                          // Chiamiamo una funzione di conferma prima di procedere
+                          _confirmReset(context);
+                        },
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
                         leading: const Icon(Icons.cleaning_services, color: Colors.orange),
                         title: const Text('Svuota Cache Immagini', style: TextStyle(color: Colors.orange)),
                         subtitle: const Text('Usa se il tuo avatar non si aggiorna', style: TextStyle(color: Colors.orange, fontSize: 12)),
@@ -412,6 +499,15 @@ class SettingsScreen extends StatelessWidget {
                         subtitle: const Text('Popola il DB per testare Affinità e Swipe', style: TextStyle(color: Colors.deepPurple, fontSize: 12)),
                         onTap: () {
                           Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminMockUsersScreen()));
+                        },
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.leaderboard, color: Colors.green),
+                        title: const Text('Admin: Classifica Utenti', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                        subtitle: const Text('Visualizza gli utenti per popolarità e genere', style: TextStyle(color: Colors.green, fontSize: 12)),
+                        onTap: () {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminRankingScreen()));
                         },
                       ),
                     ],

@@ -19,45 +19,62 @@ class SwipeBloc extends Bloc<SwipeEvent, SwipeState> {
   final SwipeService _service;
   final FirebaseAuth _auth;
   final NetworkCubit _networkCubit;
+  String? _cachedName;
   
   SwipeBloc(this._repo, this._auth, this._service, this._networkCubit) : super(SwipeInitial()) {
+    Future<String> getSafeName(String uid) async {
+      if (_cachedName != null) return _cachedName!;
+      
+      final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      _cachedName = doc.data()?['name'] ?? "Utente";
+      return _cachedName!;
+    }
     
     // 1. Caricamento Profili
     on<LoadProfiles>(_onLoadProfiles);
 
     // 2. Swipe a Destra (Like)
     on<SwipeLike>((event, emit) async {
-      final myUid = _auth.currentUser!.uid;
-      
-      // 🌟 REGISTRA IL VOTO PRIMA DELLA LOGICA DI MATCH
-      RankingService.registerSwipe(currentUserId: myUid, targetUserId: event.userId, action: 'like');
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) return;
+
+      // 2. Ora passiamo il nome REALE al servizio
+      RankingService.registerSwipe(
+        currentUserId: currentUser.uid,
+        currentUserName: await getSafeName(currentUser.uid),
+        targetUserId: event.userId,
+        action: 'like',
+      );
 
       await _handleSwipe(event.userId, isSuper: false, emit: emit);
     });
 
     // 3. Superlike (Da pulsante)
     on<SwipeSuperlike>((event, emit) async {
-      final myUid = _auth.currentUser!.uid;
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) return;
       
-      // 🌟 REGISTRA IL VOTO
-      RankingService.registerSwipe(currentUserId: myUid, targetUserId: event.userId, action: 'superlike');
+      RankingService.registerSwipe(
+        currentUserId: currentUser.uid, 
+        currentUserName: await getSafeName(currentUser.uid), 
+        targetUserId: event.userId, 
+        action: 'superlike',
+      );
 
       await _handleSwipe(event.userId, isSuper: true, emit: emit);
     });
 
     // 4. Swipe a Sinistra (Nope)
     on<SwipeNope>((event, emit) async {
-      final myUid = _auth.currentUser!.uid;
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) return;
       
-      // 🌟 REGISTRA IL VOTO NEGATIVO
-      RankingService.registerSwipe(currentUserId: myUid, targetUserId: event.userId, action: 'nope');
-      
-      // Continua con la tua logica esistente per rimuovere l'utente dalla UI
-      if (state is SwipeLoaded) {
-        final currentUsers = List<UserModel>.from((state as SwipeLoaded).users);
-        currentUsers.removeWhere((u) => u.id == event.userId);
-        emit(SwipeLoaded(users: currentUsers));
-      }
+      RankingService.registerSwipe(
+        currentUserId: currentUser.uid,
+        currentUserName: await getSafeName(currentUser.uid), 
+        targetUserId: event.userId, 
+        action: 'nope'
+      );
     });
   }
 
